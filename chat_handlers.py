@@ -4,6 +4,8 @@ from classifier import classify_message
 from config import TARGET_CHAT_ID
 import logging
 
+from utils import extract_text_from_url, process_message, extract_text_from_document
+
 logger = logging.getLogger(__name__)
 router = Router()
 
@@ -19,18 +21,39 @@ async def handle_message(message: Message):
         logger.debug(f"Сообщение из неподдерживаемого чата: {message.chat.id}")
         return  # Игнорируем сообщение
 
-    # Проверяем, есть ли текстовое сообщение
-    if not message.text:
-        logger.debug("Получено сообщение без текста. Игнорируем.")
+    logger.debug(f"Получено сообщение: {message.text if message.text else 'нет текста'}")
+
+    # Определяем тип сообщения (текст, файл или ссылка)
+    processed_message = await process_message(message, bot=message.bot)
+
+    # Если это текстовое сообщение
+    if processed_message["type"] == "text":
+        logger.debug("Обрабатывается текстовое сообщение.")
+        classification = classify_message(processed_message["content"])
+
+    # Если это файл (документ)
+    elif processed_message["type"] == "file":
+        logger.debug(f"Обрабатывается файл: {processed_message['file_name']}")
+        text = extract_text_from_document(
+            processed_message["file_path"], processed_message["file_name"]
+        )
+        classification = classify_message(text)
+
+    # Если это ссылка
+    elif processed_message["type"] == "link":
+        logger.debug(f"Обрабатывается ссылка: {processed_message['content']}")
+        text = extract_text_from_url(processed_message["content"])
+        classification = classify_message(text)
+
+    else:
+        logger.warning("Тип сообщения не распознан. Игнорируем.")
+        await message.reply("Не удалось распознать тип сообщения. Отправьте текст, документ или ссылку.")
         return
 
-
-    logger.debug(f"Получено сообщение: {message.text}")
-
-    # Передача сообщения на классификацию
-    classification = classify_message(message.text)
+    # Логируем результат классификации
     logger.debug(f"Результат классификации: {classification}")
 
+    # Ответ на основе классификации
     if classification.get("action_type") == "unknown":
         await message.reply("Не удалось распознать сущность.")
     else:

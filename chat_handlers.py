@@ -24,11 +24,10 @@ async def handle_message(message: Message):
         logger.debug("Получено сообщение без текста. Игнорируем.")
         return
 
-
     logger.debug(f"Получено сообщение: {message.text}")
 
     # Передача сообщения на классификацию
-    classification = classify_message(message.text)
+    classification = await classify_message(message.text)  # Добавлено await
     logger.debug(f"Результат классификации: {classification}")
 
     if classification.get("action_type") == "unknown":

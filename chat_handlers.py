@@ -1,8 +1,11 @@
 from aiogram import Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, ChatMemberUpdated
 from classifier import classify_message
 from config import TARGET_CHAT_ID
 import logging
+
+from dispatcher import dispatch_classification
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -13,7 +16,10 @@ def setup_handlers(dp):
 
 
 @router.message()
-async def handle_message(message: Message):
+async def handle_message(message: Message, state: FSMContext):
+    """
+    Обрабатывает входящие сообщения от пользователей.
+    """
     # Проверяем ID чата
     if str(message.chat.id) != str(TARGET_CHAT_ID):
         logger.debug(f"Сообщение из неподдерживаемого чата: {message.chat.id}")
@@ -27,14 +33,12 @@ async def handle_message(message: Message):
     logger.debug(f"Получено сообщение: {message.text}")
 
     # Передача сообщения на классификацию
-    classification = await classify_message(message.text)  # Добавлено await
+    classification = await classify_message(message.text)
     logger.debug(f"Результат классификации: {classification}")
 
-    if classification.get("action_type") == "unknown":
-        await message.reply("Не удалось распознать сущность.")
-    else:
-        await message.reply(f"Распознаны данные:\n{classification}")
-        print(classification)  # Отладочный вывод JSON
+    # Передача результата классификации в диспетчер
+    await dispatch_classification(classification, message, state)
+    logger.debug(f"Классификация обработана: {classification}")
 
 
 @router.chat_member()

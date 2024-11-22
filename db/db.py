@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from models import Base
+from .models import Base
 from config import DATABASE_URL
 
 # Создаём движок базы данных

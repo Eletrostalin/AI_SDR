@@ -1,11 +1,23 @@
 from sqlalchemy import (
-    Column, Integer, String, DateTime, ForeignKey, Text, Boolean, JSON, func
+    Column, Integer, String, DateTime, ForeignKey, Text, Boolean, JSON, func, BigInteger
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 Base = declarative_base()
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    user_id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(String, nullable=False, unique=True)
+    added_at = Column(DateTime, default=func.now(), nullable=False)
+    company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=True)
+
+    # Связь с таблицей companies
+    company = relationship("Company", back_populates="users")
 
 # Таблица Company
 class Company(Base):
@@ -19,6 +31,7 @@ class Company(Base):
 
     info = relationship("CompanyInfo", back_populates="company")
     campaigns = relationship("Campaigns", back_populates="company")
+    users = relationship("User", back_populates="company")
 
 # Таблица CompanyInfo
 class CompanyInfo(Base):

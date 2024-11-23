@@ -1,15 +1,19 @@
+from aiogram import Router
+from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
-from db.db import SessionLocal
-from langchain_helper import LangChainHelper
 
+from config import OPENAI_API_KEY
+from db.db import SessionLocal
+from db.models import Company
+from langchain_helper import LangChainHelper
 from procesed_message import process_message
-from utils.company_utils import save_company_info, get_company_by_telegram_id
+from db.db_company import save_company_info, get_company_by_telegram_id
 from utils.states import AddCompanyState
 
 # Инициализация LangChainHelper
-langchain_helper = LangChainHelper(api_key="YOUR_OPENAI_API_KEY")
-
+langchain_helper = LangChainHelper(api_key=OPENAI_API_KEY)
+router = Router()
 
 # 1. Обработчик добавления компании
 async def handle_add_company(message: Message, state: FSMContext):
@@ -20,11 +24,11 @@ async def handle_add_company(message: Message, state: FSMContext):
     await state.set_state(AddCompanyState.waiting_for_information)
 
 
-# 2. Обработчик получения информации
+@router.message(StateFilter(AddCompanyState.waiting_for_information))
 async def process_company_information(message: Message, state: FSMContext, bot):
     """
     Обрабатывает сообщение с информацией о компании, отправляет данные модели
-    для формирования JSON.
+    для формирования JSON, и сохраняет данные в таблицу CompanyInfo.
     """
     # Извлечение информации из сообщения
     extracted_info = await process_message(message, bot)
@@ -37,11 +41,10 @@ async def process_company_information(message: Message, state: FSMContext, bot):
     prompt = f"""
     Извлеки данные о компании из следующей информации:
     {extracted_info['content']}
-    Верни их в формате JSON:
+    Сгенерируй и отдай JSON следующего вида. Ты можешь добавлять в ответ дополнительные значения, если они присутствуют:
     {{
         "company_name": "Название компании",
         "industry": "Сфера деятельности",
-        "location": "Местоположение",
         "description": "Описание"
     }}
     """
@@ -51,16 +54,19 @@ async def process_company_information(message: Message, state: FSMContext, bot):
         company_data = await langchain_helper.classify_request(prompt)
         await state.update_data(company_data=company_data)
 
-        # Запрашиваем подтверждение у пользователя
+        # Формируем строку для пользователя
+        company_name = company_data.get("company_name", "Название компании не определено")
+        description = company_data.get("description", "Описание отсутствует")
         await message.reply(
-            f"Мы интерпретировали вашу информацию следующим образом:\n{company_data}\nВсе верно? (да/нет)"
+            f"Мы интерпретировали вашу информацию следующим образом:\nКомпания: {company_name}\nОписание: {description}\nВсе верно? (да/нет)"
         )
         await state.set_state(AddCompanyState.waiting_for_confirmation)
+
     except Exception as e:
         await message.reply(f"Ошибка при обработке информации: {str(e)}")
 
 
-# 3. Обработчик подтверждения
+@router.message(StateFilter(AddCompanyState.waiting_for_confirmation))
 async def confirm_company_information(message: Message, state: FSMContext):
     """
     Подтверждает или отклоняет интерпретированную информацию.
@@ -73,23 +79,36 @@ async def confirm_company_information(message: Message, state: FSMContext):
         # Сохраняем данные в базу
         db = SessionLocal()
         try:
-            user_company = get_company_by_telegram_id(db, telegram_id=str(message.from_user.id))
-            save_company_info(db, company_id=user_company.company_id, details=company_data)
+            # Проверяем наличие компании в базе по chat_id
+            chat_id = str(message.chat.id)
+            company = db.query(Company).filter_by(chat_id=chat_id).first()
+
+            if not company:
+                # Если компания не найдена, отправляем сообщение
+                await message.reply("Ошибка: Компания не найдена. Попробуйте снова.")
+                await state.clear()
+                return
+
+            # Сохраняем информацию о компании в CompanyInfo
+            save_company_info(db, company_id=company.company_id, details=company_data)
+
+            await message.reply("Информация о компании успешно сохранена!")
+            await state.clear()
+
         except Exception as e:
             await message.reply(f"Ошибка при сохранении данных: {str(e)}")
         finally:
             db.close()
 
-        await message.reply("Информация о компании успешно сохранена!")
-        await state.clear()
     else:
-        # Очищаем ранее сохранённые данные
-        await state.update_data(company_data=None)
-        await message.reply("Отправьте информацию заново.")
-        await state.set_state(AddCompanyState.waiting_for_information)
+        # Если пользователь говорит "нет", возвращаем в базовое состояние
+        await message.reply(
+            "Уточнение информации пока в разработке. Вы возвращены в базовое состояние. Попробуйте снова."
+        )
+        await state.clear()
 
 
-# 4. Обработчик просмотра компании
+@router.message()
 async def handle_view_company(message: Message):
     """
     Отображает информацию о компании пользователя.

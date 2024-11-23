@@ -1,7 +1,11 @@
 import asyncio
 import logging
+import os
+
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from openai import OpenAI
+
 from bot import setup_routers
 from config import TELEGRAM_TOKEN, TARGET_CHAT_ID
 
@@ -13,6 +17,8 @@ logger = logging.getLogger(__name__)
 async def main():
     # Логирование начала работы бота
     logger.info("Запуск бота...")
+
+
 
     # Создаем бота и диспетчер
     bot = Bot(token=TELEGRAM_TOKEN)

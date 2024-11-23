@@ -75,17 +75,17 @@ async def greet_new_user(event: ChatMemberUpdated):
         # Открываем сессию для работы с базой данных
         db = SessionLocal()
         try:
-            # Проверяем, существует ли пользователь
+            # Создаём пользователя и компанию (если они ещё не существуют)
             existing_user = db.query(User).filter(User.telegram_id == telegram_id).first()
             if not existing_user:
-                # Создаём пользователя и компанию
                 create_user_and_company(db, telegram_id=telegram_id, chat_id=chat_id)
                 logger.debug(f"Создан пользователь {user_name} и компания для чата {chat_id}.")
             else:
                 logger.debug(f"Пользователь {user_name} уже существует в базе.")
 
-            # Устанавливаем базовое состояние для нового пользователя
-            state = FSMContext(storage=storage, key={"user_id": telegram_id, "chat_id": chat_id})
+            # Устанавливаем базовое состояние через FSMContext
+            state_key = f"{telegram_id}:{chat_id}"  # Убедитесь, что это строка
+            state = FSMContext(storage=storage, key=state_key)
             await state.set_state(BaseState.default)
             logger.debug(f"Установлено базовое состояние для пользователя {user_name}.")
 

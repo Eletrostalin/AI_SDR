@@ -41,7 +41,7 @@ async def process_company_information(message: Message, state: FSMContext, bot):
     prompt = f"""
     Извлеки данные о компании из следующей информации:
     {extracted_info['content']}
-    Сгенерируй и отдай JSON следующего вида. Ты можешь добавлять в ответ дополнительные значения, если они присутствуют:
+    Сгенерируй и отдай JSON следующего вида:
     {{
         "company_name": "Название компании",
         "industry": "Сфера деятельности",
@@ -52,6 +52,11 @@ async def process_company_information(message: Message, state: FSMContext, bot):
     try:
         # Получаем JSON с данными о компании через LangChain
         company_data = await langchain_helper.classify_request(prompt)
+
+        # Проверяем, что company_data является корректным
+        if not isinstance(company_data, dict):
+            raise ValueError("Получены некорректные данные от модели. Ожидается JSON.")
+
         await state.update_data(company_data=company_data)
 
         # Формируем строку для пользователя

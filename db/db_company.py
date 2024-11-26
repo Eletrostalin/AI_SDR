@@ -58,3 +58,19 @@ def save_company_info(db: Session, company_id: int, details: dict) -> CompanyInf
     return company_info
 
 
+
+def update_company_info(db: Session, company_id: int, new_details: dict) -> None:
+    """
+    Обновляет информацию о компании в таблице CompanyInfo.
+
+    :param db: Сессия базы данных.
+    :param company_id: ID компании для обновления.
+    :param new_details: Новый JSON-объект с деталями компании.
+    """
+    company_info = db.query(CompanyInfo).filter_by(company_id=company_id).first()
+    if company_info:
+        company_info.details = new_details
+        db.commit()
+        db.refresh(company_info)
+    else:
+        raise ValueError(f"Информация о компании с ID {company_id} не найдена.")

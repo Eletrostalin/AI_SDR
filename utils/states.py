@@ -16,3 +16,10 @@ class AddCampaignState(StatesGroup):
     waiting_for_campaign_information = State()
     waiting_for_campaign_name = State()
     waiting_for_confirmation = State()
+
+
+class EditCompanyState(StatesGroup):
+    """
+    Состояния для редактирования информации о компании.
+    """
+    waiting_for_updated_info = State()

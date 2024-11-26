@@ -4,12 +4,12 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
 from classifier import extract_company_data
-from utils.states import AddCompanyState, BaseState
+from utils.states import AddCompanyState, BaseState, EditCompanyState
 from logger import logger
 from db.db import SessionLocal
 from db.models import Company
 from utils.utils import process_message
-from db.db_company import save_company_info, get_company_info_by_company_id, get_company_by_chat_id
+from db.db_company import save_company_info, get_company_info_by_company_id, get_company_by_chat_id, update_company_info
 
 router = Router()
 
@@ -131,3 +131,56 @@ async def handle_view_company(message: Message):
         await message.reply(f"Ошибка при извлечении данных: {str(e)}")
     finally:
         db.close()
+
+
+async def handle_edit_company(message: Message, state: FSMContext):
+    """
+    Инициирует процесс редактирования информации о компании.
+    """
+    await message.reply("Пожалуйста, отправьте новую информацию для обновления данных о компании.")
+    await state.set_state("edit_company_info")
+
+
+@router.message(StateFilter(EditCompanyState.waiting_for_updated_info))
+async def process_edit_company_information(message: Message, state: FSMContext, bot):
+    """
+    Обрабатывает сообщение с обновленной информацией о компании и обновляет данные в базе.
+    """
+    try:
+        # Обработка сообщения
+        extracted_info = await process_message(message, bot)
+
+        if extracted_info["type"] == "error":
+            await message.reply(f"Ошибка: {extracted_info['message']}")
+            return
+
+        # Обновляем информацию через OpenAI или другим способом
+        new_details = await extract_company_data(extracted_info['content'])
+
+        if not isinstance(new_details, dict):
+            raise ValueError("Получены некорректные данные от модели. Ожидается JSON.")
+
+        # Открываем сессию для работы с базой данных
+        db: Session = SessionLocal()
+        try:
+            chat_id = str(message.chat.id)
+            company = get_company_by_chat_id(db, chat_id)
+
+            if not company:
+                await message.reply("Компания не найдена.")
+                return
+
+            # Обновляем данные компании
+            update_company_info(db, company.company_id, new_details)
+            await message.reply("Информация о компании успешно обновлена.")
+            await state.set_state(BaseState.default)
+
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении информации о компании: {e}", exc_info=True)
+            await message.reply("Произошла ошибка при обновлении данных компании. Попробуйте снова.")
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Ошибка обработки сообщения: {e}", exc_info=True)
+        await message.reply("Произошла ошибка при обработке сообщения. Попробуйте снова.")

@@ -10,3 +10,8 @@ class BaseState(StatesGroup):
 class AddCompanyState(StatesGroup):
     waiting_for_information = State()
     waiting_for_confirmation = State()
+
+
+class AddCampaignState(StatesGroup):
+    waiting_for_campaign_information = State()
+    waiting_for_confirmation = State()

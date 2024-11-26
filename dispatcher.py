@@ -2,6 +2,7 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from handlers.company_handlers import handle_add_company
 
+from handlers.company_handlers import handle_view_company
 
 async def dispatch_classification(classification: dict, message: Message, state: FSMContext):
     """
@@ -16,11 +17,8 @@ async def dispatch_classification(classification: dict, message: Message, state:
 
     # Сортировка по действиям и сущностям
     if action_type == "add" and entity_type == "company":
-        # Обработка добавления компании
         await handle_add_company(message, state)
     elif action_type == "view" and entity_type == "company":
-        # Пример обработки просмотра компаний
-        await message.reply("Отображение списка компаний.")
+        await handle_view_company(message)
     else:
-        # Если ничего не подошло
         await message.reply(f"Не удалось обработать запрос: {classification}")

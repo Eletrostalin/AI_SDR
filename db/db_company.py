@@ -16,6 +16,14 @@ def get_company_by_telegram_id(db: Session, telegram_id: str) -> Company:
     return db.query(Company).filter_by(telegram_id=telegram_id).first()
 
 
+def get_company_info_by_company_id(db: Session, company_id: int) -> dict:
+    """
+    Возвращает информацию о компании из таблицы CompanyInfo по company_id.
+    """
+    company_info = db.query(CompanyInfo).filter_by(company_id=company_id).first()
+    return company_info.details if company_info else None
+
+
 def create_company_if_not_exists(db: Session, telegram_id: str, chat_id: str) -> Company:
     """
     Создаёт новую запись о компании, если её не существует.
@@ -48,3 +56,5 @@ def save_company_info(db: Session, company_id: int, details: dict) -> CompanyInf
     db.commit()
     db.refresh(company_info)
     return company_info
+
+

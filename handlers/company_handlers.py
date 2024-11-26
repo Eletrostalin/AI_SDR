@@ -3,13 +3,18 @@ from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
+from utils.states import AddCompanyState, BaseState
+from main import logger
 from config import OPENAI_API_KEY
 from db.db import SessionLocal
 from db.models import Company
 from langchain_helper import LangChainHelper
-from procesed_message import process_message
-from db.db_company import save_company_info, get_company_by_telegram_id
-from utils.states import AddCompanyState
+from utils.utils import process_message
+
+from db.db_company import (save_company_info,
+                           get_company_info_by_company_id,
+                           get_company_by_chat_id)
+
 
 # Инициализация LangChainHelper
 langchain_helper = LangChainHelper(api_key=OPENAI_API_KEY)
@@ -98,7 +103,7 @@ async def confirm_company_information(message: Message, state: FSMContext):
             save_company_info(db, company_id=company.company_id, details=company_data)
 
             await message.reply("Информация о компании успешно сохранена!")
-            await state.clear()
+            await state.set_state(BaseState.default)
 
         except Exception as e:
             await message.reply(f"Ошибка при сохранении данных: {str(e)}")
@@ -116,17 +121,35 @@ async def confirm_company_information(message: Message, state: FSMContext):
 @router.message()
 async def handle_view_company(message: Message):
     """
-    Отображает информацию о компании пользователя.
+    Отображает информацию о компании на основе chat_id.
     """
+    chat_id = str(message.chat.id)  # ID чата
     db = SessionLocal()
+
     try:
-        user_company = get_company_by_telegram_id(db, telegram_id=str(message.from_user.id))
-        if user_company and user_company.info:
-            company_info = user_company.info[0]  # Предполагаем, что у компании одна запись info
-            await message.reply(f"Информация о вашей компании:\n{company_info.details}")
-        else:
-            await message.reply("Информация о компании отсутствует. Добавьте её командой /add_company.")
+        logger.debug(f"Ищем компанию по chat_id: {chat_id}")
+
+        # Получаем компанию пользователя по chat_id
+        company = get_company_by_chat_id(db, chat_id)
+        if not company:
+            await message.reply("Компания не найдена. Возможно, вы ещё не добавили её.")
+            logger.debug("Компания не найдена.")
+            return
+
+        logger.debug(f"Найдена компания: {company}")
+
+        # Получаем информацию о компании по company_id
+        company_info = get_company_info_by_company_id(db, company.company_id)
+        if not company_info:
+            await message.reply("Информация о вашей компании отсутствует.")
+            logger.debug("Информация о компании отсутствует.")
+            return
+
+        # Отправляем информацию в формате JSON
+        await message.reply(f"Информация о вашей компании:\n```json\n{company_info}\n```", parse_mode="Markdown")
+
     except Exception as e:
+        logger.error(f"Ошибка при извлечении данных: {e}")
         await message.reply(f"Ошибка при извлечении данных: {str(e)}")
     finally:
         db.close()

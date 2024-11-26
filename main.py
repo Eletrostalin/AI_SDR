@@ -1,17 +1,11 @@
 import asyncio
-import logging
-import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from openai import OpenAI
+from logger import logger
 
 from bot import setup_routers
 from config import TELEGRAM_TOKEN, TARGET_CHAT_ID
-
-# Настройка логирования
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 
 async def main():

@@ -4,7 +4,7 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
 from utils.states import AddCompanyState, BaseState
-from main import logger
+from logger import logger
 from config import OPENAI_API_KEY
 from db.db import SessionLocal
 from db.models import Company

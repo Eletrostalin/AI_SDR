@@ -4,11 +4,11 @@ from aiogram.fsm.context import FSMContext
 from classifier import classify_message
 from dispatcher import dispatch_classification  # Импорт диспетчера цепочек
 from config import TARGET_CHAT_ID
-import logging
+from logger import logger
 
 from utils.utils import extract_text_from_url, process_message, extract_text_from_document
 
-logger = logging.getLogger(__name__)
+
 router = Router()
 
 

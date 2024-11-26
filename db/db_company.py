@@ -97,3 +97,18 @@ def validate_and_merge_company_info(
     # Объединяем данные
     return {**existing_data, **fields_to_add}
 
+
+def delete_company_info(db: Session, company_id: int):
+    """
+    Удаляет информацию о компании из базы данных.
+
+    :param db: Сессия базы данных.
+    :param company_id: ID компании.
+    """
+    company_info = db.query(CompanyInfo).filter_by(company_id=company_id).first()
+    if company_info:
+        db.delete(company_info)
+        db.commit()
+    else:
+        raise ValueError(f"Информация о компании с ID {company_id} не найдена.")
+

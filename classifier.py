@@ -19,6 +19,11 @@ def classify_message(message_text: str) -> dict:
     try:
         logger.debug("Starting message classification...")
 
+        # Проверяем, что message_text не None и не пустой
+        if not message_text:
+            logger.warning("Received empty or None message text for classification.")
+            return {"action_type": "error", "entity_type": None}
+
         # Escape curly braces in the message text
         escaped_text = message_text.replace("{", "{{").replace("}", "}}")
 

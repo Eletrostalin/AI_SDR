@@ -11,7 +11,7 @@ CREATE_CAMPAIGN_PROMPT = """
   "campaign_name": "Восьмимартовщина",
   "description": "Кампания к 8 марта",
   "params": {{
-    "целевое_аудитория": "мужчины 35-50"
+    "target audience": "мужчины 35-50"
   }}
 }}
 

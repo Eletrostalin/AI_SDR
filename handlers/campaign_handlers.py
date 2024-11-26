@@ -34,16 +34,16 @@ async def process_campaign_information(message: Message, state: FSMContext, bot)
     Обрабатывает сообщение с информацией о кампании, отправляет данные модели
     для формирования JSON и сохраняет их в FSMContext.
     """
-    # Извлечение информации из сообщения
-    extracted_info = await process_message(message, bot)
-
-    if extracted_info["type"] == "error":
-        await message.reply(f"Ошибка: {extracted_info['message']}")
-        return
-
     try:
+        # Извлечение информации из сообщения
+        extracted_info = await process_message(message, bot)
+
+        if extracted_info["type"] == "error":
+            await message.reply(f"Ошибка: {extracted_info['message']}")
+            return
+
         # Получаем JSON с данными о кампании через OpenAI
-        campaign_data = extract_campaign_data_with_validation(extracted_info['content'], state, message)
+        campaign_data = await extract_campaign_data_with_validation(extracted_info['content'], state, message)
 
         if not campaign_data:
             # Если данные неполные, ждем уточнения
@@ -71,6 +71,7 @@ async def process_campaign_information(message: Message, state: FSMContext, bot)
 
         # Устанавливаем состояние ожидания подтверждения
         await state.set_state(AddCampaignState.waiting_for_confirmation)
+        logger.debug(f"Состояние установлено: {await state.get_state()}")
 
     except Exception as e:
         logger.error(f"Ошибка обработки данных кампании: {e}", exc_info=True)

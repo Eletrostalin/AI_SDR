@@ -9,7 +9,7 @@ from config import TARGET_CHAT_ID
 import logging
 from sqlalchemy.orm import Session
 
-from handlers.campaign_handlers import process_campaign_information
+from handlers.campaign_handlers import process_campaign_information, confirm_campaign_creation
 from handlers.company_handlers import process_company_information, confirm_company_information
 from utils.states import BaseState, AddCompanyState, AddCampaignState
 from utils.utils import extract_text_from_url, process_message, extract_text_from_document
@@ -41,7 +41,6 @@ async def handle_message(message: Message, state: FSMContext):
 
         # Логика маршрутизации по состоянию
         if current_state is None or current_state == BaseState.default.state:
-            # Пользователь в базовом состоянии, отправляем сообщение в классификатор
             logger.debug("Пользователь в базовом состоянии. Сообщение отправляется в классификатор.")
             try:
                 classification = classify_message(message.text)
@@ -51,19 +50,18 @@ async def handle_message(message: Message, state: FSMContext):
                 logger.error(f"Ошибка в классификаторе: {e}")
                 await message.reply("Произошла ошибка при обработке сообщения. Попробуйте снова.")
         elif current_state == AddCompanyState.waiting_for_information.state:
-            # Пользователь добавляет информацию о компании
             logger.debug("Пользователь в состоянии AddCompanyState:waiting_for_information. Обрабатываем сообщение.")
             await process_company_information(message, state, bot=message.bot)
         elif current_state == AddCompanyState.waiting_for_confirmation.state:
-            # Пользователь подтверждает информацию о компании
             logger.debug("Пользователь в состоянии AddCompanyState:waiting_for_confirmation. Обрабатываем сообщение.")
             await confirm_company_information(message, state)
         elif current_state == AddCampaignState.waiting_for_campaign_information.state:
-            # Пользователь добавляет информацию о кампании
             logger.debug("Пользователь в состоянии AddCampaignState:waiting_for_campaign_information. Обрабатываем сообщение.")
-            await process_campaign_information(message, state)
+            await process_campaign_information(message, state, bot=message.bot)
+        elif current_state == AddCampaignState.waiting_for_confirmation.state:
+            logger.debug("Пользователь в состоянии AddCampaignState:waiting_for_confirmation. Обрабатываем сообщение.")
+            await confirm_campaign_creation(message, state)
         else:
-            # Если состояние неизвестно, уведомляем пользователя
             logger.warning(f"Неизвестное состояние: {current_state}")
             await message.reply("Произошла ошибка. Пожалуйста, попробуйте снова.")
 

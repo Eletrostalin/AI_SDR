@@ -2,6 +2,7 @@ from aiogram import Router
 from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
+from sqlalchemy.exc import SQLAlchemyError
 
 from sqlalchemy.orm import Session
 
@@ -11,7 +12,7 @@ from logger import logger
 from db.db import SessionLocal
 from utils.utils import process_message
 from db.db_company import save_company_info, get_company_info_by_company_id, get_company_by_chat_id, \
-    update_company_info, validate_and_merge_company_info
+    update_company_info, validate_and_merge_company_info, delete_company_info
 
 router = Router()
 
@@ -47,10 +48,17 @@ async def process_company_information(message: Message, state: FSMContext, bot):
         if not isinstance(company_data, dict):
             raise ValueError("Получены некорректные данные от модели. Ожидается JSON.")
 
+        company_name = company_data.get("company_name")
+        if not company_name:
+            logger.warning("Название компании не распознано.")
+            await state.update_data(company_data=company_data)
+            await message.reply("Не удалось определить название компании. Укажите его:")
+            await state.set_state(AddCompanyState.waiting_for_company_name)
+            return
+
         await state.update_data(company_data=company_data)
         logger.info(f"Информация о компании успешно извлечена: {company_data}")
 
-        company_name = company_data.get("company_name", "Название компании неСontentьно")
         description = company_data.get("description", "Описание отсутствует")
         await message.reply(
             f"Мы интерпретировали вашу информацию следующим образом:\nКомпания: {company_name}\nОписание: {description}\nВсе верно? (да/нет)"
@@ -208,3 +216,53 @@ async def process_edit_company_information(message: Message, state: FSMContext, 
     except Exception as e:
         logger.error(f"Ошибка обработки сообщения: {e}", exc_info=True)
         await message.reply("Произошла ошибка при обработке сообщения. Попробуйте снова.")
+
+
+@router.message(StateFilter(AddCompanyState.waiting_for_company_name))
+async def handle_company_name_confirmation(message: Message, state: FSMContext):
+    """
+    Уточняет название компании, если оно не распознано из информации пользователя.
+    """
+    company_name = message.text.strip()
+    if not company_name:
+        await message.reply("Название компании не может быть пустым. Пожалуйста, введите название снова.")
+        return
+
+    state_data = await state.get_data()
+    company_data = state_data.get("company_data", {})
+    company_data["company_name"] = company_name
+    await state.update_data(company_data=company_data)
+
+    description = company_data.get("description", "Описание отсутствует")
+    await message.reply(
+        f"Название компании: {company_name}\nОписание: {description}\nВсе верно? (да/нет)"
+    )
+    logger.debug(f"Название компании уточнено: {company_name}. Установлено состояние waiting_for_confirmation.")
+    await state.set_state(AddCompanyState.waiting_for_confirmation)
+
+
+async def handle_delete_company(message: Message, state: FSMContext):
+    """
+    Обрабатывает запрос на удаление всей информации о компании.
+    """
+    db = SessionLocal()
+    try:
+        chat_id = str(message.chat.id)
+        company = get_company_by_chat_id(db, chat_id)
+
+        if not company:
+            await message.reply("Компания не найдена. Убедитесь, что вы добавили данные компании.")
+            return
+
+        # Удаляем информацию о компании
+        delete_company_info(db, company.company_id)
+        await message.reply("Информация о компании успешно удалена.")
+
+        # Возвращаем пользователя в базовое состояние
+        await state.set_state(BaseState.default)
+
+    except SQLAlchemyError as e:
+        logger.error(f"Ошибка при удалении информации о компании: {e}", exc_info=True)
+        await message.reply("Произошла ошибка при удалении информации о компании. Попробуйте снова.")
+    finally:
+        db.close()

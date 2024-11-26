@@ -15,6 +15,7 @@ class User(Base):
     telegram_id = Column(String, nullable=False, unique=True)
     added_at = Column(DateTime, default=func.now(), nullable=False)
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=True)
+    name = Column(String, nullable=True)
 
     # Связь с таблицей companies
     company = relationship("Company", back_populates="users")
@@ -28,6 +29,7 @@ class Company(Base):
     telegram_id = Column(String, nullable=False)
     creation_date = Column(DateTime, default=func.now(), nullable=False)
     status = Column(String, default="active", nullable=False)
+    name = Column(String, nullable=True)
 
     info = relationship("CompanyInfo", back_populates="company")
     campaigns = relationship("Campaigns", back_populates="company")

@@ -35,6 +35,11 @@ async def handle_message(message: Message, state: FSMContext):
 
     logger.debug(f"Получено сообщение: {message.text if message.text else 'нет текста'}")
 
+    # Исключаем сообщения без текста (например, системные уведомления или приветствия)
+    if not message.text:
+        logger.debug("Сообщение без текста пропущено.")
+        return
+
     try:
         # Получаем текущее состояние пользователя
         current_state = await state.get_state()
@@ -74,27 +79,25 @@ async def handle_message(message: Message, state: FSMContext):
         await message.reply("Произошла ошибка при обработке вашего сообщения. Попробуйте снова.")
 
 
-
 @router.chat_member()
 async def greet_new_user(event: ChatMemberUpdated):
     """
     Обработчик добавления нового пользователя в чат.
     """
     if event.new_chat_member.status == "member" and event.old_chat_member.status in {"left", "kicked"}:
-        user_name = event.new_chat_member.user.full_name
+        user = event.new_chat_member.user
+        user_name = user.full_name or user.username or "Уважаемый пользователь"
         chat_id = event.chat.id
-        telegram_id = event.new_chat_member.user.id
 
-        # Логирование добавления нового пользователя
         logger.debug(f"Пользователь {user_name} добавлен в чат {chat_id}. Проверяем и добавляем в базу данных.")
 
         # Добавление пользователя и компании в базу данных
         db: Session = SessionLocal()
         try:
-            user = create_or_get_company_and_user(db, telegram_id, chat_id)
-            logger.info(f"Пользователь {user_name} с ID {telegram_id} добавлен в базу данных.")
+            user_record = create_or_get_company_and_user(db, user, chat_id)
+            logger.info(f"Пользователь {user_name} с ID {user.id} добавлен в базу данных.")
         except Exception as e:
-            logger.error(f"Ошибка при добавлении пользователя в базу данных: {e}")
+            logger.error(f"Ошибка при добавлении пользователя в базу данных: {e}", exc_info=True)
         finally:
             db.close()
 

@@ -1,17 +1,18 @@
 from db.models import Company, User
 from logger import logger
 from sqlalchemy.orm import Session
+from aiogram.types import User as TelegramUser
 
 
 
-def create_or_get_company_and_user(db: Session, telegram_id: int, chat_id: int):
+def create_or_get_company_and_user(db: Session, telegram_user: TelegramUser, chat_id: int):
     """
     Проверяет существование компании по chat_id.
     Если компании нет, создаёт новую компанию и пользователя.
     Если компания есть, создаёт только пользователя.
     """
     chat_id_str = str(chat_id)
-    telegram_id_str = str(telegram_id)
+    telegram_id_str = str(telegram_user.id)
 
     # Проверяем существование компании
     company = db.query(Company).filter_by(chat_id=chat_id_str).first()
@@ -26,9 +27,13 @@ def create_or_get_company_and_user(db: Session, telegram_id: int, chat_id: int):
     # Проверяем существование пользователя
     user = db.query(User).filter_by(telegram_id=telegram_id_str).first()
     if not user:
-        logger.info(f"Пользователь с Telegram ID {telegram_id} не найден. Создаём нового пользователя.")
-        # Создаём нового пользователя, связанного с компанией
-        user = User(telegram_id=telegram_id_str, company_id=company.company_id)
+        logger.info(f"Пользователь с Telegram ID {telegram_id_str} не найден. Создаём нового пользователя.")
+        # Создаём нового пользователя с именем из Telegram
+        user = User(
+            telegram_id=telegram_id_str,
+            company_id=company.company_id,
+            name=telegram_user.full_name or telegram_user.username or "Unknown"
+        )
         db.add(user)
         db.commit()
         db.refresh(user)

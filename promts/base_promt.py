@@ -15,6 +15,7 @@ BASE_PROMPT = """
 - "Хочу контент план на месяц": {{"action_type": "view", "entity_type": "content_plan"}}
 - "Digital-агентство 'Атвинта' занимается дизайном..." или любой другой текст о компании: {{"action_type": "add", "entity_type": "company"}}
 - "Удалить компанию ExampleCorp": {{"action_type": "delete", "entity_type": "company"}}
+- "Удалить всю информацию о моей компании": {{"action_type": "delete", "entity_type": "company"}}
 - "Показать данные компании": {{"action_type": "view", "entity_type": "company"}}
 - "Изменить информацию о компании": {{"action_type": "edit", "entity_type": "company"}}
 - "Непонятный запрос": {{"action_type": "unknown", "entity_type": "unknown"}}

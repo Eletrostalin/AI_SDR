@@ -2,13 +2,19 @@ from aiogram import Router
 from aiogram.types import Message, ChatMemberUpdated
 from aiogram.fsm.context import FSMContext
 from classifier import classify_message
+from db.db import SessionLocal
+from db.db_auth import create_or_get_company_and_user
 from dispatcher import dispatch_classification  # Импорт диспетчера цепочек
 from config import TARGET_CHAT_ID
-from logger import logger
+import logging
+from sqlalchemy.orm import Session
 
+from handlers.campaign_handlers import process_campaign_information
+from handlers.company_handlers import process_company_information, confirm_company_information
+from utils.states import BaseState, AddCompanyState, AddCampaignState
 from utils.utils import extract_text_from_url, process_message, extract_text_from_document
 
-
+logger = logging.getLogger(__name__)
 router = Router()
 
 
@@ -19,7 +25,7 @@ def setup_handlers(dp):
 @router.message()
 async def handle_message(message: Message, state: FSMContext):
     """
-    Основной обработчик сообщений от пользователей.
+    Основной обработчик сообщений, маршрутизирующий их в зависимости от состояния пользователя.
     """
     # Проверяем ID чата
     if str(message.chat.id) != str(TARGET_CHAT_ID):
@@ -28,43 +34,43 @@ async def handle_message(message: Message, state: FSMContext):
 
     logger.debug(f"Получено сообщение: {message.text if message.text else 'нет текста'}")
 
-    # Определяем тип сообщения (текст, файл или ссылка)
     try:
-        processed_message = await process_message(message, bot=message.bot)
+        # Получаем текущее состояние пользователя
+        current_state = await state.get_state()
+        logger.debug(f"Текущее состояние пользователя: {current_state}")
 
-        # Если это текстовое сообщение
-        if processed_message["type"] == "text":
-            logger.debug("Обрабатывается текстовое сообщение.")
-            classification = classify_message(processed_message["content"])
-
-        # Если это файл (документ)
-        elif processed_message["type"] == "file":
-            logger.debug(f"Обрабатывается файл: {processed_message['file_name']}")
-            text = extract_text_from_document(
-                processed_message["file_path"], processed_message["file_name"]
-            )
-            classification = classify_message(text)
-
-        # Если это ссылка
-        elif processed_message["type"] == "link":
-            logger.debug(f"Обрабатывается ссылка: {processed_message['content']}")
-            text = extract_text_from_url(processed_message["content"])
-            classification = classify_message(text)
-
+        # Логика маршрутизации по состоянию
+        if current_state is None or current_state == BaseState.default.state:
+            # Пользователь в базовом состоянии, отправляем сообщение в классификатор
+            logger.debug("Пользователь в базовом состоянии. Сообщение отправляется в классификатор.")
+            try:
+                classification = classify_message(message.text)
+                logger.debug(f"Результат классификации: {classification}")
+                await dispatch_classification(classification, message, state)
+            except Exception as e:
+                logger.error(f"Ошибка в классификаторе: {e}")
+                await message.reply("Произошла ошибка при обработке сообщения. Попробуйте снова.")
+        elif current_state == AddCompanyState.waiting_for_information.state:
+            # Пользователь добавляет информацию о компании
+            logger.debug("Пользователь в состоянии AddCompanyState:waiting_for_information. Обрабатываем сообщение.")
+            await process_company_information(message, state, bot=message.bot)
+        elif current_state == AddCompanyState.waiting_for_confirmation.state:
+            # Пользователь подтверждает информацию о компании
+            logger.debug("Пользователь в состоянии AddCompanyState:waiting_for_confirmation. Обрабатываем сообщение.")
+            await confirm_company_information(message, state)
+        elif current_state == AddCampaignState.waiting_for_campaign_information.state:
+            # Пользователь добавляет информацию о кампании
+            logger.debug("Пользователь в состоянии AddCampaignState:waiting_for_campaign_information. Обрабатываем сообщение.")
+            await process_campaign_information(message, state)
         else:
-            logger.warning("Тип сообщения не распознан. Игнорируем.")
-            await message.reply("Не удалось распознать тип сообщения. Отправьте текст, документ или ссылку.")
-            return
-
-        # Логируем результат классификации
-        logger.debug(f"Результат классификации: {classification}")
-
-        # Передача результата классификации в диспетчер цепочек
-        await dispatch_classification(classification, message, state)
+            # Если состояние неизвестно, уведомляем пользователя
+            logger.warning(f"Неизвестное состояние: {current_state}")
+            await message.reply("Произошла ошибка. Пожалуйста, попробуйте снова.")
 
     except Exception as e:
-        logger.error(f"Ошибка обработки сообщения: {str(e)}")
+        logger.error(f"Ошибка обработки сообщения: {e}")
         await message.reply("Произошла ошибка при обработке вашего сообщения. Попробуйте снова.")
+
 
 
 @router.chat_member()
@@ -75,11 +81,23 @@ async def greet_new_user(event: ChatMemberUpdated):
     if event.new_chat_member.status == "member" and event.old_chat_member.status in {"left", "kicked"}:
         user_name = event.new_chat_member.user.full_name
         chat_id = event.chat.id
+        telegram_id = event.new_chat_member.user.id
 
-        # Логируем добавление нового пользователя
-        logger.debug(f"Пользователь {user_name} добавлен в чат {chat_id}. Отправляем приветственное сообщение.")
+        # Логирование добавления нового пользователя
+        logger.debug(f"Пользователь {user_name} добавлен в чат {chat_id}. Проверяем и добавляем в базу данных.")
 
-        # Отправляем приветственное сообщение
+        # Добавление пользователя и компании в базу данных
+        db: Session = SessionLocal()
+        try:
+            user = create_or_get_company_and_user(db, telegram_id, chat_id)
+            logger.info(f"Пользователь {user_name} с ID {telegram_id} добавлен в базу данных.")
+        except Exception as e:
+            logger.error(f"Ошибка при добавлении пользователя в базу данных: {e}")
+        finally:
+            db.close()
+
+        # Отправка приветственного сообщения
         await event.bot.send_message(
             chat_id=chat_id,
-            text=f"Добро пожаловать, {user_name}! 👋\nРады видеть вас в нашем чате.")
+            text=f"Добро пожаловать, {user_name}! 👋\nРады видеть вас в нашем чате."
+        )

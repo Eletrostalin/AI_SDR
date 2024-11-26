@@ -1,41 +1,36 @@
+from db.models import Company, User
+from logger import logger
 from sqlalchemy.orm import Session
-from db.models import User, Company
-from sqlalchemy.exc import IntegrityError
 
 
-def create_user_and_company(db: Session, telegram_id: int, chat_id: int) -> User:
+
+def create_or_get_company_and_user(db: Session, telegram_id: int, chat_id: int):
     """
-    Создаёт пользователя и связанную с ним компанию, если они не существуют.
+    Проверяет существование компании по chat_id.
+    Если компании нет, создаёт новую компанию и пользователя.
+    Если компания есть, создаёт только пользователя.
     """
-    telegram_id_str = str(telegram_id)
     chat_id_str = str(chat_id)
+    telegram_id_str = str(telegram_id)
 
-    try:
-        # Проверяем существование компании
-        company = db.query(Company).filter_by(chat_id=chat_id_str).first()
-        if not company:
-            # Если компании нет, создаём новую
-            company = Company(
-                chat_id=chat_id_str,
-                telegram_id=telegram_id_str,
-            )
-            db.add(company)
-            db.commit()
-            db.refresh(company)
+    # Проверяем существование компании
+    company = db.query(Company).filter_by(chat_id=chat_id_str).first()
+    if not company:
+        logger.info(f"Компания для чата {chat_id} не найдена. Создаём новую компанию.")
+        # Создаём новую компанию
+        company = Company(chat_id=chat_id_str, telegram_id=telegram_id_str)
+        db.add(company)
+        db.commit()
+        db.refresh(company)
 
-        # Проверяем существование пользователя
-        user = db.query(User).filter_by(telegram_id=telegram_id_str).first()
-        if not user:
-            # Если пользователя нет, создаём его
-            user = User(
-                telegram_id=telegram_id_str,
-                company_id=company.company_id,
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+    # Проверяем существование пользователя
+    user = db.query(User).filter_by(telegram_id=telegram_id_str).first()
+    if not user:
+        logger.info(f"Пользователь с Telegram ID {telegram_id} не найден. Создаём нового пользователя.")
+        # Создаём нового пользователя, связанного с компанией
+        user = User(telegram_id=telegram_id_str, company_id=company.company_id)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
-        return user
-    except IntegrityError as e:
-        db.rollback()
-        raise e
+    return user

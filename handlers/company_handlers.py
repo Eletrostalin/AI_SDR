@@ -3,13 +3,15 @@ from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
-from classifier import extract_company_data
+from sqlalchemy.orm import Session
+
+from classifier import extract_company_data, extract_add_fields
 from utils.states import AddCompanyState, BaseState, EditCompanyState
 from logger import logger
 from db.db import SessionLocal
-from db.models import Company
 from utils.utils import process_message
-from db.db_company import save_company_info, get_company_info_by_company_id, get_company_by_chat_id, update_company_info
+from db.db_company import save_company_info, get_company_info_by_company_id, get_company_by_chat_id, \
+    update_company_info, validate_and_merge_company_info
 
 router = Router()
 
@@ -138,29 +140,39 @@ async def handle_edit_company(message: Message, state: FSMContext):
     Инициирует процесс редактирования информации о компании.
     """
     await message.reply("Пожалуйста, отправьте новую информацию для обновления данных о компании.")
-    await state.set_state("edit_company_info")
+    await state.set_state(EditCompanyState.waiting_for_updated_info)
+    logger.debug(f"Состояние установлено: {await state.get_state()}")
 
 
 @router.message(StateFilter(EditCompanyState.waiting_for_updated_info))
 async def process_edit_company_information(message: Message, state: FSMContext, bot):
     """
-    Обрабатывает сообщение с обновленной информацией о компании и обновляет данные в базе.
+    Обрабатывает сообщение с информацией для добавления новых данных в компанию.
     """
     try:
-        # Обработка сообщения
-        extracted_info = await process_message(message, bot)
+        # Извлекаем данные для добавления
+        edit_fields = await extract_add_fields(message.text)
 
-        if extracted_info["type"] == "error":
-            await message.reply(f"Ошибка: {extracted_info['message']}")
+        if not edit_fields:
+            await message.reply(
+                "Не удалось обработать запрос из-за временной недоступности сервиса. Пожалуйста, попробуйте позже."
+            )
+            logger.error("extract_add_fields вернула None. Возможно, проблема с OpenAI API.")
+            await state.set_state(BaseState.default)
             return
 
-        # Обновляем информацию через OpenAI или другим способом
-        new_details = await extract_company_data(extracted_info['content'])
+        if "error" in edit_fields:
+            await message.reply(edit_fields["error"])
+            await state.set_state(BaseState.default)
+            return
 
-        if not isinstance(new_details, dict):
-            raise ValueError("Получены некорректные данные от модели. Ожидается JSON.")
+        fields_to_add = edit_fields.get("fields_to_add", {})
+        if not fields_to_add:
+            await message.reply("Не удалось извлечь данные для добавления. Уточните запрос.")
+            await state.set_state(BaseState.default)
+            return
 
-        # Открываем сессию для работы с базой данных
+        # Проверяем пересечение ключей с существующими данными
         db: Session = SessionLocal()
         try:
             chat_id = str(message.chat.id)
@@ -168,16 +180,28 @@ async def process_edit_company_information(message: Message, state: FSMContext, 
 
             if not company:
                 await message.reply("Компания не найдена.")
+                await state.set_state(BaseState.default)
                 return
 
-            # Обновляем данные компании
-            update_company_info(db, company.company_id, new_details)
-            await message.reply("Информация о компании успешно обновлена.")
-            await state.set_state(BaseState.default)
+            existing_data = get_company_info_by_company_id(db, company.company_id) or {}
+            overlapping_keys = set(fields_to_add.keys()) & set(existing_data.keys())
 
+            if overlapping_keys:
+                await message.reply(
+                    f"Ошибка: Поля {', '.join(overlapping_keys)} уже существуют. Обновление невозможно."
+                )
+                await state.set_state(BaseState.default)
+                return
+
+            # Объединяем данные
+            new_data = {**existing_data, **fields_to_add}
+            update_company_info(db, company.company_id, new_data)
+
+            await message.reply("Новая информация успешно добавлена.")
+            await state.set_state(BaseState.default)
         except Exception as e:
             logger.error(f"Ошибка при обновлении информации о компании: {e}", exc_info=True)
-            await message.reply("Произошла ошибка при обновлении данных компании. Попробуйте снова.")
+            await message.reply("Произошла ошибка при добавлении данных компании. Попробуйте снова.")
         finally:
             db.close()
 

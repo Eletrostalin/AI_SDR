@@ -10,8 +10,9 @@ import logging
 from sqlalchemy.orm import Session
 
 from handlers.campaign_handlers import process_campaign_information, confirm_campaign_creation
-from handlers.company_handlers import process_company_information, confirm_company_information
-from utils.states import BaseState, AddCompanyState, AddCampaignState
+from handlers.company_handlers import process_company_information, confirm_company_information, \
+    process_edit_company_information
+from utils.states import BaseState, AddCompanyState, AddCampaignState, EditCompanyState
 from utils.utils import extract_text_from_url, process_message, extract_text_from_document
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,9 @@ async def handle_message(message: Message, state: FSMContext):
         elif current_state == AddCampaignState.waiting_for_confirmation.state:
             logger.debug("Пользователь в состоянии AddCampaignState:waiting_for_confirmation. Обрабатываем сообщение.")
             await confirm_campaign_creation(message, state)
+        elif current_state == EditCompanyState.waiting_for_updated_info.state:
+            logger.debug("Пользователь в состоянии EditCompanyState:waiting_for_updated_info. Обрабатываем сообщение.")
+            await process_edit_company_information(message, state, bot=message.bot)
         else:
             logger.warning(f"Неизвестное состояние: {current_state}")
             await message.reply("Произошла ошибка. Пожалуйста, попробуйте снова.")

@@ -58,7 +58,6 @@ def save_company_info(db: Session, company_id: int, details: dict) -> CompanyInf
     return company_info
 
 
-
 def update_company_info(db: Session, company_id: int, new_details: dict) -> None:
     """
     Обновляет информацию о компании в таблице CompanyInfo.
@@ -74,3 +73,27 @@ def update_company_info(db: Session, company_id: int, new_details: dict) -> None
         db.refresh(company_info)
     else:
         raise ValueError(f"Информация о компании с ID {company_id} не найдена.")
+
+
+def validate_and_merge_company_info(
+    db: Session, company_id: int, fields_to_add: dict
+) -> dict:
+    """
+    Проверяет существующие данные компании, ищет пересечения ключей, объединяет новые данные.
+
+    :param db: Сессия базы данных.
+    :param company_id: ID компании.
+    :param fields_to_add: Данные для добавления.
+    :return: Новые данные, объединенные с существующими, или выбрасывает исключение.
+    """
+    existing_data = get_company_info_by_company_id(db, company_id) or {}
+    overlapping_keys = set(fields_to_add.keys()) & set(existing_data.keys())
+
+    if overlapping_keys:
+        raise ValueError(
+            f"Поля {', '.join(overlapping_keys)} уже существуют. Обновление невозможно."
+        )
+
+    # Объединяем данные
+    return {**existing_data, **fields_to_add}
+

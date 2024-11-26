@@ -4,7 +4,7 @@ import json
 from config import OPENAI_API_KEY
 from promts.base_promt import BASE_PROMPT
 from promts.campaign_promt import CREATE_CAMPAIGN_PROMPT
-from promts.company_promt import PROCESS_COMPANY_INFORMATION_PROMPT
+from promts.company_promt import PROCESS_COMPANY_INFORMATION_PROMPT, EDIT_COMPANY_PROMPT
 from utils.states import AddCampaignState
 
 logger = logging.getLogger(__name__)
@@ -118,3 +118,28 @@ async def extract_campaign_data_with_validation(input_text: str, state, message)
         logger.error(f"Error extracting campaign data: {e}", exc_info=True)
         await message.reply("Произошла ошибка. Пожалуйста, повторите запрос.")
         return None
+
+async def extract_add_fields(input_text: str) -> dict:
+    """
+    Анализирует запрос пользователя на добавление информации о компании.
+
+    :param input_text: Текст запроса.
+    :return: JSON с полями для добавления или ошибкой.
+    """
+    try:
+        prompt = EDIT_COMPANY_PROMPT.format(input_text=input_text)
+        logger.debug(f"Formatted edit company prompt: {prompt}")
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        content = response.choices[0].message.content
+        logger.debug(f"Add fields response: {content}")
+        return json.loads(content.strip())
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parsing error: {e}", exc_info=True)
+        return {"error": "Invalid JSON response from model"}
+    except Exception as e:
+        logger.error(f"Error extracting add fields: {e}", exc_info=True)

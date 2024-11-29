@@ -20,9 +20,9 @@ def classify_message(message_text: str) -> dict:
         logger.debug("Starting message classification...")
 
         # Проверяем, что message_text не None и не пустой
-        if not message_text:
+        if not message_text or not message_text.strip():
             logger.warning("Received empty or None message text for classification.")
-            return {"action_type": "error", "entity_type": None}
+            return {"action_type": "unknown", "entity_type": "unknown"}
 
         # Escape curly braces in the message text
         escaped_text = message_text.replace("{", "{{").replace("}", "}}")
@@ -56,7 +56,7 @@ def classify_message(message_text: str) -> dict:
         return result
     except Exception as e:
         logger.error(f"Error during OpenAI API call: {e}", exc_info=True)
-        return {"action_type": "error", "entity_type": None}
+        return {"action_type": "unknown", "entity_type": "unknown"}
 
 def extract_company_data(company_text: str) -> dict:
     """

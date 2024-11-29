@@ -1,12 +1,15 @@
 from aiogram.filters import StateFilter
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
+from db.db_campaign import get_campaigns_by_company_id
 from logger import logger
 from config import OPENAI_API_KEY
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
 from db.models import Campaigns
+from utils.google_doc import create_google_sheets_table
 from utils.states import AddCampaignState, BaseState
 from classifier import extract_campaign_data_with_validation
 from aiogram import Router
@@ -122,14 +125,6 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
         await state.set_state(BaseState.default)
 
 
-# Убедитесь, что остальные сообщения обрабатываются только в базовом состоянии
-@router.message(StateFilter(BaseState.default))
-async def handle_default_message(message: Message):
-    """
-    Обработка сообщений в базовом состоянии.
-    """
-    await message.reply("Ваш запрос обрабатывается. Пожалуйста, уточните ваш запрос.")
-
 @router.message(StateFilter(AddCampaignState.waiting_for_campaign_name))
 async def process_campaign_name(message: Message, state: FSMContext):
     """
@@ -161,3 +156,52 @@ async def process_campaign_name(message: Message, state: FSMContext):
 
     # Переводим в состояние ожидания подтверждения
     await state.set_state(AddCampaignState.waiting_for_confirmation)
+
+
+async def handle_view_campaigns(message: Message, state):
+    """
+    Обработчик для просмотра рекламных кампаний.
+    """
+    chat_id = str(message.chat.id)
+    db: Session = SessionLocal()
+
+    try:
+        # Получаем компанию по chat_id
+        company = get_company_by_chat_id(db, chat_id)
+        if not company:
+            await message.reply("Компания не найдена. Убедитесь, что вы зарегистрировали свою компанию.")
+            return
+
+        # Извлекаем рекламные кампании
+        campaigns = get_campaigns_by_company_id(db, company.company_id)
+
+        if not campaigns:
+            await message.reply("У вас нет активных рекламных кампаний.")
+            return
+
+        # Формируем данные для таблицы Google Docs
+        data = [["ID", "Название кампании", "Статус", "Дата создания", "Дата завершения"]]  # Заголовки таблицы
+        data += [
+            [
+                campaign.campaign_id,
+                campaign.campaign_name,
+                campaign.status,
+                campaign.created_at.strftime("%Y-%m-%d"),
+                campaign.end_date.strftime("%Y-%m-%d") if campaign.end_date else "Не указана",
+            ]
+            for campaign in campaigns
+        ]
+
+        # Логируем сформированные данные для отладки
+        logger.debug(f"Сформированные данные для Google Docs: {data}")
+
+        # Создаем Google Doc
+        google_doc_url = create_google_sheets_table(data, title=f"Рекламные кампании - {company.name}")
+
+        # Отправляем ссылку на документ
+        await message.reply(f"Ваши рекламные кампании: [Открыть документ]({google_doc_url})", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Ошибка при обработке просмотра кампаний: {e}", exc_info=True)
+        await message.reply("Произошла ошибка при обработке вашего запроса.")
+    finally:
+        db.close()

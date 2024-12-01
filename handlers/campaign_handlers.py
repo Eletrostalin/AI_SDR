@@ -124,7 +124,6 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
         await message.reply("Добавление кампании отменено.")
         await state.set_state(BaseState.default)
 
-
 @router.message(StateFilter(AddCampaignState.waiting_for_campaign_name))
 async def process_campaign_name(message: Message, state: FSMContext):
     """

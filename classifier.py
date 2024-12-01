@@ -42,12 +42,16 @@ def classify_message(message_text: str) -> dict:
         logger.debug(f"Full response from OpenAI: {response}")
 
         # Extract the content from the response
-        content = response.choices[0].message.content
+        content = response.choices[0].message.content.strip()
         logger.debug(f"Model response content: {content}")
+
+        # Clean the content by removing any prefixes like "Ответ:"
+        if content.lower().startswith("ответ:"):
+            content = content.split(":", 1)[1].strip()
 
         # Attempt to parse the content as JSON
         try:
-            result = json.loads(content.strip())
+            result = json.loads(content)
         except json.JSONDecodeError as parse_error:
             logger.error(f"JSON parsing error: {parse_error}")
             logger.debug(f"Invalid JSON content: {content}")

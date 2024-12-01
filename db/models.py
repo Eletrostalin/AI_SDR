@@ -57,6 +57,7 @@ class Campaigns(Base):
     end_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     status = Column(String, default="active", nullable=False)
+    status_for_user = Column(Boolean, default=True, nullable=False)  # Новая колонка
     params = Column(JSON, nullable=True)  # Поле для хранения параметров
 
     templates = relationship("Templates", back_populates="campaign")

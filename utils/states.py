@@ -1,9 +1,6 @@
 from aiogram.fsm.state import StatesGroup, State
 
 class BaseState(StatesGroup):
-    """
-    Базовое состояние, обрабатывающее запросы пользователя.
-    """
     default = State()
 
 
@@ -20,7 +17,9 @@ class AddCampaignState(StatesGroup):
 
 
 class EditCompanyState(StatesGroup):
-    """
-    Состояния для редактирования информации о компании.
-    """
     waiting_for_updated_info = State()
+
+
+class DeleteCampaignState(StatesGroup):
+    waiting_for_campaign_selection = State()
+    waiting_for_campaign_confirmation = State()

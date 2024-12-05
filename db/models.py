@@ -41,9 +41,17 @@ class CompanyInfo(Base):
 
     company_info_id = Column(Integer, primary_key=True, autoincrement=True)
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
-    details = Column(JSONB, nullable=True)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
+    company_name = Column(String(255), nullable=False)  # Название компании
+    industry = Column(String(255), nullable=False)  # Отрасль/сфера деятельности
+    region = Column(String(255), nullable=True)  # Регион/география работы
+    contact_email = Column(String(255), nullable=False)  # Основной email
+    contact_phone = Column(String(20), nullable=True)  # Телефон (опционально)
+    additional_info = Column(Text, nullable=True)  # Дополнительная информация
 
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, onupdate=func.now())
+
+    # Связь с таблицей Company
     company = relationship("Company", back_populates="info")
 
 # Таблица Campaigns

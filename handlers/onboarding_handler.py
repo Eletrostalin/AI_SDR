@@ -92,12 +92,18 @@ async def handle_confirmation(message: Message, state: FSMContext):
     """
     if message.text.lower() == "да":
         data = await state.get_data()
+        company_id = data.get("company_id")
 
-        # Сохранение в БД
+        if not company_id:
+            await message.answer("Ошибка: Не удалось получить данные о компании. Повторите онбординг.")
+            await state.set_state(OnboardingState.waiting_for_company_name)
+            return
+
         db: Session = SessionLocal()
         try:
+            # Сохраняем данные компании в таблицу CompanyInfo
             company_info = CompanyInfo(
-                company_id=data.get("company_id"),  # ID компании
+                company_id=company_id,
                 company_name=data.get("company_name"),
                 industry=data.get("industry"),
                 region=data.get("region"),
@@ -107,6 +113,11 @@ async def handle_confirmation(message: Message, state: FSMContext):
             )
             db.add(company_info)
             db.commit()
+
+            await message.answer(
+                "🎉 Данные компании успешно сохранены! Теперь вы можете начать работу с ботом.\n"
+                "Напишите 'Помощь', чтобы узнать, что я могу делать."
+            )
         except Exception as e:
             logger.error(f"Ошибка сохранения данных компании: {e}", exc_info=True)
             await message.answer("Произошла ошибка при сохранении данных. Попробуйте снова.")
@@ -114,10 +125,6 @@ async def handle_confirmation(message: Message, state: FSMContext):
             db.close()
 
         await state.clear()
-        await message.answer(
-            "🎉 Данные компании успешно сохранены! Теперь вы можете начать работу с ботом.\n"
-            "Напишите 'Помощь', чтобы узнать, что я могу делать."
-        )
     else:
         await state.set_state(OnboardingState.waiting_for_company_name)
         await message.answer("Опрос начат заново. Введите название вашей компании.")

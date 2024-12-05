@@ -21,7 +21,18 @@ def get_company_info_by_company_id(db: Session, company_id: int) -> dict:
     Возвращает информацию о компании из таблицы CompanyInfo по company_id.
     """
     company_info = db.query(CompanyInfo).filter_by(company_id=company_id).first()
-    return company_info.details if company_info else None
+    if not company_info:
+        return None
+
+    # Преобразуем объект CompanyInfo в словарь без полей created_at и updated_at
+    return {
+        "company_name": company_info.company_name,
+        "industry": company_info.industry,
+        "region": company_info.region,
+        "contact_email": company_info.contact_email,
+        "contact_phone": company_info.contact_phone,
+        "additional_info": company_info.additional_info,
+    }
 
 
 def create_company_if_not_exists(db: Session, telegram_id: str, chat_id: str) -> Company:

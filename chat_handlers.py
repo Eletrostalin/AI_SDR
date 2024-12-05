@@ -1,5 +1,5 @@
 from aiogram import Router
-from aiogram.types import Message, ChatMemberUpdated
+from aiogram.types import Message, ChatMemberUpdated, ContentType
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.orm import Session
 
@@ -7,9 +7,10 @@ from classifier import classify_message
 from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
 from db.models import Company
+from dispatcher import dispatch_classification
 from handlers.onboarding_handler import handle_company_name, handle_industry, handle_region, handle_contact_email, \
     handle_contact_phone, handle_additional_details, handle_confirmation
-from utils.states import OnboardingState
+from utils.states import OnboardingState, BaseState
 import logging
 
 logger = logging.getLogger(__name__)
@@ -64,23 +65,43 @@ async def greet_new_user(event: ChatMemberUpdated, state: FSMContext):
 async def handle_message(message: Message, state: FSMContext):
     """
     Обработчик всех сообщений в чате.
-    Если пользователь проходит онбординг, маршрутизирует сообщения в соответствующие хендлеры.
-    Если состояние отсутствует, сообщение направляется в классификатор и передаётся в диспетчер.
+    Если пользователь добавлен в чат, запускается онбординг.
+    Если состояние отсутствует, устанавливается базовое состояние, и сообщение направляется в классификатор.
     """
     current_state = await state.get_state()
     logger.debug(f"Получено сообщение: {message.text}. Текущее состояние: {current_state}")
 
+    # Проверяем системные сообщения
+    if message.content_type in {ContentType.NEW_CHAT_MEMBERS, ContentType.LEFT_CHAT_MEMBER}:
+        if message.content_type == ContentType.NEW_CHAT_MEMBERS:
+            # Обрабатываем добавление нового пользователя
+            for new_member in message.new_chat_members:
+                event = ChatMemberUpdated(
+                    chat=message.chat,
+                    from_user=message.from_user,
+                    new_chat_member=new_member,
+                    old_chat_member=message.from_user,
+                )
+                logger.debug(f"Обрабатываем добавление нового пользователя: {new_member.full_name}")
+                await greet_new_user(event, state)
+        logger.debug("Системное сообщение обработано. Пропускаем обработку.")
+        return
+
+    # Если состояние не установлено, устанавливаем базовое состояние
     if current_state is None:
-        # Если состояние не установлено, отправляем сообщение на классификацию
-        logger.debug("Состояние отсутствует. Направляем сообщение в классификатор.")
+        logger.debug("Состояние отсутствует. Устанавливаем базовое состояние и классифицируем сообщение.")
+        await state.set_state(BaseState.default.state)  # Устанавливаем базовое состояние
         try:
-            classification = classify_message(message.text)
+            classification = classify_message(message.text)  # Классификация сообщения
             logger.debug(f"Результат классификации: {classification}")
-            await dispatch_classification(classification, message, state)
+            await dispatch_classification(classification, message, state)  # Передача в диспетчер
         except Exception as e:
             logger.error(f"Ошибка в процессе классификации: {e}", exc_info=True)
             await message.reply("Произошла ошибка при обработке вашего сообщения. Попробуйте снова.")
-    elif current_state == OnboardingState.waiting_for_company_name.state:
+        return
+
+    # Обработка состояний онбординга
+    if current_state == OnboardingState.waiting_for_company_name.state:
         await handle_company_name(message, state)
     elif current_state == OnboardingState.waiting_for_industry.state:
         await handle_industry(message, state)

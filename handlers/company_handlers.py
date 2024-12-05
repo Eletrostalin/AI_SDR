@@ -1,3 +1,5 @@
+import json
+
 from aiogram import Router
 from aiogram.filters import StateFilter
 from aiogram.types import Message
@@ -133,7 +135,13 @@ async def handle_view_company(message: Message):
             await message.reply("Информация о вашей компании отсутствует.")
             return
 
-        await message.reply(f"Информация о вашей компании:\n```json\n{company_info}\n```", parse_mode="Markdown")
+        await message.reply(
+            "Информация о вашей компании:\n"
+            "```json\n"
+            f"{json.dumps(company_info, indent=4, ensure_ascii=False)}"
+            "\n```",
+            parse_mode="Markdown"
+        )
         logger.debug(f"Информация о компании отправлена пользователю: {company_info}")
 
     except Exception as e:

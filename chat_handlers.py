@@ -2,6 +2,8 @@ from aiogram import Router
 from aiogram.types import Message, ChatMemberUpdated
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.orm import Session
+
+from classifier import classify_message
 from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
 from db.models import Company
@@ -58,20 +60,26 @@ async def greet_new_user(event: ChatMemberUpdated, state: FSMContext):
         finally:
             db.close()
 
-
 @router.message()
 async def handle_message(message: Message, state: FSMContext):
     """
     Обработчик всех сообщений в чате.
     Если пользователь проходит онбординг, маршрутизирует сообщения в соответствующие хендлеры.
+    Если состояние отсутствует, сообщение направляется в классификатор и передаётся в диспетчер.
     """
     current_state = await state.get_state()
-
     logger.debug(f"Получено сообщение: {message.text}. Текущее состояние: {current_state}")
 
     if current_state is None:
-        # Если состояние не установлено, бот пока не поддерживает сообщения
-        await message.answer("Этот модуль находится в разработке.")
+        # Если состояние не установлено, отправляем сообщение на классификацию
+        logger.debug("Состояние отсутствует. Направляем сообщение в классификатор.")
+        try:
+            classification = classify_message(message.text)
+            logger.debug(f"Результат классификации: {classification}")
+            await dispatch_classification(classification, message, state)
+        except Exception as e:
+            logger.error(f"Ошибка в процессе классификации: {e}", exc_info=True)
+            await message.reply("Произошла ошибка при обработке вашего сообщения. Попробуйте снова.")
     elif current_state == OnboardingState.waiting_for_company_name.state:
         await handle_company_name(message, state)
     elif current_state == OnboardingState.waiting_for_industry.state:

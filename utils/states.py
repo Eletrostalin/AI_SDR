@@ -27,6 +27,7 @@ class AddCampaignState(StatesGroup):
 
 class EditCompanyState(StatesGroup):
     waiting_for_updated_info = State()
+    waiting_for_confirmation = State()
 
 class DeleteCampaignState(StatesGroup):
     waiting_for_campaign_selection = State()

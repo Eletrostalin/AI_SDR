@@ -26,7 +26,7 @@ async def dispatch_classification(classification: dict, message: Message, state:
         if action_type == "add" and entity_type == "company":
             await handle_add_company(message, state)
         elif action_type == "view" and entity_type == "company":
-            await handle_view_company(message)
+            await handle_view_company(message, state)
         elif action_type == "edit" and entity_type == "company":
             await handle_edit_company(message, state)
         elif action_type == "delete" and entity_type == "company":

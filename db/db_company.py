@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from db.models import Company, CompanyInfo
+from logger import logger
 
 
 def get_company_by_chat_id(db: Session, chat_id: str) -> Company:
@@ -109,17 +110,24 @@ def validate_and_merge_company_info(
     return {**existing_data, **fields_to_add}
 
 
-def delete_company_info(db: Session, company_id: int):
+def delete_additional_info(db: Session, company_id: int):
     """
-    Удаляет информацию о компании из базы данных.
+    Очищает содержимое колонки `additional_info` для указанной компании.
 
     :param db: Сессия базы данных.
     :param company_id: ID компании.
     """
-    company_info = db.query(CompanyInfo).filter_by(company_id=company_id).first()
-    if company_info:
-        db.delete(company_info)
+    try:
+        company_info = db.query(CompanyInfo).filter_by(company_id=company_id).first()
+
+        if not company_info:
+            raise ValueError(f"Информация о компании с ID {company_id} не найдена.")
+
+        # Удаляем содержимое колонки
+        company_info.additional_info = None
         db.commit()
-    else:
-        raise ValueError(f"Информация о компании с ID {company_id} не найдена.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка при удалении содержимого additional_info: {e}", exc_info=True)
+        raise
 

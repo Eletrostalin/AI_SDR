@@ -4,17 +4,20 @@ from aiogram import Router
 from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
-from sqlalchemy.exc import SQLAlchemyError
 
 from sqlalchemy.orm import Session
 
-from classifier import extract_company_data, extract_add_fields
+from classifier import extract_company_data, client
+from db.models import Campaigns, CompanyInfo
+from promts.company_promt import generate_edit_company_prompt
 from utils.states import AddCompanyState, BaseState, EditCompanyState
 from logger import logger
 from db.db import SessionLocal
 from utils.utils import process_message
-from db.db_company import save_company_info, get_company_info_by_company_id, get_company_by_chat_id, \
-    update_company_info, validate_and_merge_company_info, delete_company_info
+from db.db_company import (save_company_info,
+                           get_company_info_by_company_id,
+                           get_company_by_chat_id,
+                           delete_additional_info)
 
 router = Router()
 
@@ -113,7 +116,7 @@ async def confirm_company_information(message: Message, state: FSMContext):
 
 
 @router.message()
-async def handle_view_company(message: Message):
+async def handle_view_company(message: Message, state: FSMContext):
     """
     Отображает информацию о компании на основе chat_id.
     """
@@ -142,6 +145,7 @@ async def handle_view_company(message: Message):
             "\n```",
             parse_mode="Markdown"
         )
+        await state.clear()
         logger.debug(f"Информация о компании отправлена пользователю: {company_info}")
 
     except Exception as e:
@@ -151,46 +155,108 @@ async def handle_view_company(message: Message):
         db.close()
 
 
+@router.message()
 async def handle_edit_company(message: Message, state: FSMContext):
     """
     Инициирует процесс редактирования информации о компании.
     """
-    await message.reply("Пожалуйста, отправьте новую информацию для обновления данных о компании.")
-    await state.set_state(EditCompanyState.waiting_for_updated_info)
-    logger.debug(f"Состояние установлено: {await state.get_state()}")
+    db: Session = SessionLocal()
+    try:
+        chat_id = str(message.chat.id)
+        company = get_company_by_chat_id(db, chat_id)
+
+        if not company:
+            await message.reply("Компания не найдена. Убедитесь, что вы добавили данные компании.")
+            return
+
+        company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
+
+        if not company_info:
+            await message.reply("Информация о компании отсутствует.")
+            return
+
+        await state.update_data(current_info=company_info.additional_info or "")
+        await message.reply(
+            "Что вы хотите изменить в информации о компании? Опишите ваши изменения."
+        )
+        await state.set_state(EditCompanyState.waiting_for_updated_info)
+    except Exception as e:
+        logger.error(f"Ошибка при инициализации редактирования компании: {e}", exc_info=True)
+        await message.reply("Произошла ошибка. Попробуйте снова.")
+    finally:
+        db.close()
 
 
 @router.message(StateFilter(EditCompanyState.waiting_for_updated_info))
-async def process_edit_company_information(message: Message, state: FSMContext, bot):
+async def process_edit_company_information(message: Message, state: FSMContext):
     """
-    Обрабатывает сообщение с информацией для добавления новых данных в компанию.
+    Обрабатывает сообщение с новой информацией для редактирования данных компании.
     """
+    db: Session = SessionLocal()
     try:
-        # Извлекаем данные для добавления
-        edit_fields = await extract_add_fields(message.text)
+        chat_id = str(message.chat.id)
+        company = get_company_by_chat_id(db, chat_id)
 
-        if not edit_fields:
-            await message.reply(
-                "Не удалось обработать запрос из-за временной недоступности сервиса. Пожалуйста, попробуйте позже."
-            )
-            logger.error("extract_add_fields вернула None. Возможно, проблема с OpenAI API.")
+        if not company:
+            await message.reply("Компания не найдена. Убедитесь, что вы добавили данные компании.")
             await state.set_state(BaseState.default)
             return
 
-        if "error" in edit_fields:
-            await message.reply(edit_fields["error"])
+        company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
+
+        if not company_info:
+            await message.reply("Информация о компании отсутствует.")
             await state.set_state(BaseState.default)
             return
 
-        fields_to_add = edit_fields.get("fields_to_add", {})
-        if not fields_to_add:
-            await message.reply("Не удалось извлечь данные для добавления. Уточните запрос.")
-            await state.set_state(BaseState.default)
-            return
+        # Извлекаем текущую информацию о компании
+        current_info = {
+            "company_name": company_info.company_name,
+            "industry": company_info.industry,
+            "description": company_info.additional_info or "Не указано",
+        }
+        new_info = message.text.strip()
 
-        # Проверяем пересечение ключей с существующими данными
-        db: Session = SessionLocal()
-        try:
+        # Генерируем промт и отправляем запрос к модели
+        prompt = generate_edit_company_prompt(current_info, new_info)
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        updated_info = response.choices[0].message.content.strip()
+
+        # Сохраняем обновленные данные для подтверждения
+        await state.update_data(updated_info=updated_info)
+
+        # Отправляем пользователю результат на подтверждение
+        await message.reply(
+            f"Вот обновленная информация о компании:\n\n{updated_info}\n\n"
+            f"Вы подтверждаете изменения? Напишите 'да' для сохранения или 'нет' для повторного редактирования."
+        )
+        await state.set_state(EditCompanyState.waiting_for_confirmation)
+    except Exception as e:
+        logger.error(f"Ошибка при обработке изменений компании: {e}", exc_info=True)
+        await message.reply("Произошла ошибка при обработке ваших данных. Попробуйте снова.")
+    finally:
+        db.close()
+
+@router.message(StateFilter(EditCompanyState.waiting_for_confirmation))
+async def confirm_edit_company_information(message: Message, state: FSMContext):
+    """
+    Обрабатывает подтверждение обновления информации о компании.
+    """
+    db: Session = SessionLocal()
+    try:
+        if message.text.lower() == "да":
+            # Сохраняем подтвержденные изменения
+            state_data = await state.get_data()
+            updated_info = state_data.get("updated_info")
+
+            if not updated_info:
+                await message.reply("Нет данных для обновления. Начните процесс заново.")
+                await state.set_state(BaseState.default)
+                return
+
             chat_id = str(message.chat.id)
             company = get_company_by_chat_id(db, chat_id)
 
@@ -199,59 +265,28 @@ async def process_edit_company_information(message: Message, state: FSMContext, 
                 await state.set_state(BaseState.default)
                 return
 
-            existing_data = get_company_info_by_company_id(db, company.company_id) or {}
-            overlapping_keys = set(fields_to_add.keys()) & set(existing_data.keys())
+            # Обновляем поле `additional_info` в БД
+            company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
+            company_info.additional_info = updated_info
+            db.commit()
 
-            if overlapping_keys:
-                await message.reply(
-                    f"Ошибка: Поля {', '.join(overlapping_keys)} уже существуют. Обновление невозможно."
-                )
-                await state.set_state(BaseState.default)
-                return
-
-            # Объединяем данные
-            new_data = {**existing_data, **fields_to_add}
-            update_company_info(db, company.company_id, new_data)
-
-            await message.reply("Новая информация успешно добавлена.")
-            await state.set_state(BaseState.default)
-        except Exception as e:
-            logger.error(f"Ошибка при обновлении информации о компании: {e}", exc_info=True)
-            await message.reply("Произошла ошибка при добавлении данных компании. Попробуйте снова.")
-        finally:
-            db.close()
-
+            await message.reply("Изменения успешно сохранены.")
+            await state.clear()
+        elif message.text.lower() == "нет":
+            await message.reply("Отправьте новую информацию для редактирования.")
+            await state.set_state(EditCompanyState.waiting_for_updated_info)
+        else:
+            await message.reply("Пожалуйста, напишите 'да' для сохранения или 'нет' для редактирования.")
     except Exception as e:
-        logger.error(f"Ошибка обработки сообщения: {e}", exc_info=True)
-        await message.reply("Произошла ошибка при обработке сообщения. Попробуйте снова.")
+        logger.error(f"Ошибка при подтверждении изменений компании: {e}", exc_info=True)
+        await message.reply("Произошла ошибка при обработке подтверждения. Попробуйте снова.")
+    finally:
+        db.close()
 
-
-@router.message(StateFilter(AddCompanyState.waiting_for_company_name))
-async def handle_company_name_confirmation(message: Message, state: FSMContext):
+@router.message()
+async def handle_delete_additional_info(message: Message, state: FSMContext):
     """
-    Уточняет название компании, если оно не распознано из информации пользователя.
-    """
-    company_name = message.text.strip()
-    if not company_name:
-        await message.reply("Название компании не может быть пустым. Пожалуйста, введите название снова.")
-        return
-
-    state_data = await state.get_data()
-    company_data = state_data.get("company_data", {})
-    company_data["company_name"] = company_name
-    await state.update_data(company_data=company_data)
-
-    description = company_data.get("description", "Описание отсутствует")
-    await message.reply(
-        f"Название компании: {company_name}\nОписание: {description}\nВсе верно? (да/нет)"
-    )
-    logger.debug(f"Название компании уточнено: {company_name}. Установлено состояние waiting_for_confirmation.")
-    await state.set_state(AddCompanyState.waiting_for_confirmation)
-
-
-async def handle_delete_company(message: Message, state: FSMContext):
-    """
-    Обрабатывает запрос на удаление всей информации о компании.
+    Удаляет содержимое колонки `additional_info` для компании.
     """
     db = SessionLocal()
     try:
@@ -262,15 +297,22 @@ async def handle_delete_company(message: Message, state: FSMContext):
             await message.reply("Компания не найдена. Убедитесь, что вы добавили данные компании.")
             return
 
-        # Удаляем информацию о компании
-        delete_company_info(db, company.company_id)
-        await message.reply("Информация о компании успешно удалена.")
+        # Проверяем, есть ли информация для удаления
+        company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
 
-        # Возвращаем пользователя в базовое состояние
-        await state.set_state(BaseState.default)
+        if not company_info or not company_info.additional_info:
+            await message.reply("Дополнительная информация уже отсутствует.")
+            return
 
-    except SQLAlchemyError as e:
-        logger.error(f"Ошибка при удалении информации о компании: {e}", exc_info=True)
-        await message.reply("Произошла ошибка при удалении информации о компании. Попробуйте снова.")
+        # Удаляем данные из `additional_info`
+        delete_additional_info(db, company.company_id)
+        await message.reply("Дополнительная информация успешно удалена.")
+
+        # Сбрасываем состояние
+        await state.clear()
+
+    except Exception as e:
+        logger.error(f"Ошибка при удалении дополнительной информации: {e}", exc_info=True)
+        await message.reply("Произошла ошибка при удалении дополнительной информации. Попробуйте снова.")
     finally:
         db.close()

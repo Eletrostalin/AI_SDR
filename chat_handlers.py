@@ -8,9 +8,10 @@ from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
 from db.models import Company
 from dispatcher import dispatch_classification
+from handlers.company_handlers import process_edit_company_information, confirm_edit_company_information
 from handlers.onboarding_handler import handle_company_name, handle_industry, handle_region, handle_contact_email, \
     handle_contact_phone, handle_additional_details, handle_confirmation
-from utils.states import OnboardingState, BaseState
+from utils.states import OnboardingState, BaseState, EditCompanyState
 import logging
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,14 @@ async def handle_message(message: Message, state: FSMContext):
         except Exception as e:
             logger.error(f"Ошибка в процессе классификации: {e}", exc_info=True)
             await message.reply("Произошла ошибка при обработке вашего сообщения. Попробуйте снова.")
+        return
+
+        # Обработка состояний редактирования компании
+    if current_state == EditCompanyState.waiting_for_updated_info.state:
+        await process_edit_company_information(message, state)
+        return
+    elif current_state == EditCompanyState.waiting_for_confirmation.state:
+        await confirm_edit_company_information(message, state)
         return
 
     # Обработка состояний онбординга

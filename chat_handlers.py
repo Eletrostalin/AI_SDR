@@ -1,5 +1,6 @@
-from aiogram import Router
+from aiogram import Router, Bot
 from aiogram.exceptions import TelegramMigrateToChat
+from aiogram.fsm.storage.base import StorageKey
 from aiogram.types import Message, ChatMemberUpdated, ContentType
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.orm import Session
@@ -81,11 +82,12 @@ async def greet_new_user(event: ChatMemberUpdated, state: FSMContext):
     if event.new_chat_member.status == "member" and event.old_chat_member.status in {"left", "kicked"}:
         telegram_user = event.new_chat_member.user
         chat_id = event.chat.id
+        bot_id = event.bot.id  # Получаем ID бота
 
         logger.debug(f"Новый пользователь {telegram_user.full_name} добавлен в чат {chat_id}. Проверка в базе данных.")
         db: Session = SessionLocal()
         try:
-            # Проверяем существование компании до вызова create_or_get_company_and_user
+            # Проверяем существование компании
             existing_company = db.query(Company).filter_by(chat_id=str(chat_id)).first()
 
             # Создаём или получаем компанию и пользователя
@@ -93,21 +95,37 @@ async def greet_new_user(event: ChatMemberUpdated, state: FSMContext):
 
             if not existing_company:
                 # Если компания не существовала, это первый пользователь компании
-                await state.update_data(company_id=user.company_id)  # Сохраняем company_id в состояние
-                await state.set_state(OnboardingState.waiting_for_company_name)
-                current_state = await state.get_state()  # Проверяем установленное состояние
-                logger.debug(f"Состояние после установки: {current_state}")
+                logger.debug(
+                    f"Компания для чата {chat_id} не найдена. Устанавливаем онбординг для {telegram_user.full_name}.")
 
-                # Отправляем сообщение с началом онбординга
+                # Привязка состояния к добавленному пользователю
+                await state.storage.set_state(
+                    key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
+                    state=OnboardingState.waiting_for_company_name
+                )
+                await state.storage.set_data(
+                    key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
+                    data={"company_id": user.company_id}
+                )
+
+                # Проверяем состояние для пользователя
+                current_state = await state.storage.get_state(
+                    key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id)
+                )
+                logger.debug(f"Состояние для {telegram_user.full_name}: {current_state}")
+
+                # Отправляем сообщение о начале онбординга в общий чат
                 await event.bot.send_message(
-                    chat_id=chat_id,
+                    chat_id=chat_id,  # Сообщение отправляется в общий чат
                     text=(
-                        "👋 Добро пожаловать! Давайте начнем с базовой информации.\n"
-                        "Введите название вашей компании."
+                        f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
+                        "Давайте начнем с базовой информации.\nВведите название вашей компании."
                     )
                 )
             else:
                 # Приветственное сообщение для последующих пользователей
+                logger.debug(
+                    f"Компания для чата {chat_id} уже существует. Пользователь {telegram_user.full_name} добавлен.")
                 await event.bot.send_message(
                     chat_id=chat_id,
                     text=(

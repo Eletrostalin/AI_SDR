@@ -20,6 +20,16 @@ class User(Base):
     # Связь с таблицей companies
     company = relationship("Company", back_populates="users")
 
+class ChatThread(Base):
+    __tablename__ = "chat_threads"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    thread_id = Column(BigInteger, nullable=False, index=True)
+    created_by_bot = Column(Boolean, default=False, nullable=False)
+    thread_name = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
 # Таблица Company
 class Company(Base):
     __tablename__ = "companies"

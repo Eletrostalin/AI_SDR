@@ -3,6 +3,7 @@ from aiogram.types import Message, ChatMemberUpdated, ContentType
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.orm import Session
 
+from admin.ThreadManager import save_thread_to_db
 from classifier import classify_message
 from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
@@ -27,36 +28,61 @@ async def greet_new_user(event: ChatMemberUpdated, state: FSMContext):
         telegram_user = event.new_chat_member.user
         chat_id = event.chat.id
 
+        # Проверяем, поддерживает ли чат темы
+        chat = await event.bot.get_chat(chat_id)
+        logger.debug(f"Чат {chat_id} поддерживает темы: {chat.is_forum}")
+
+        if not chat.is_forum:
+            logger.error(f"Темы не включены в чате {chat_id}. Поле message_thread_id не будет доступно.")
+            return
+
         logger.debug(f"Новый пользователь {telegram_user.full_name} добавлен в чат {chat_id}. Проверка в базе данных.")
         db: Session = SessionLocal()
         try:
-            # Проверяем существование компании до вызова create_or_get_company_and_user
+            # Проверяем существование компании
             existing_company = db.query(Company).filter_by(chat_id=str(chat_id)).first()
-            print(existing_company)
+            logger.debug(f"Компания найдена: {existing_company}")
 
             # Создаём или получаем компанию и пользователя
             user = create_or_get_company_and_user(db, telegram_user, chat_id)
 
             if not existing_company:
-                # Если компания не существовала, это первый пользователь компании
-                await state.update_data(company_id=user.company_id)  # Сохраняем company_id в состояние
+                await state.update_data(company_id=user.company_id)
                 await state.set_state(OnboardingState.waiting_for_company_name)
-                await event.bot.send_message(
+                sent_message = await event.bot.send_message(
                     chat_id=chat_id,
-                    text=(
-                        "👋 Добро пожаловать! Давайте начнем с базовой информации.\n"
-                        "Введите название вашей компании."
-                    )
+                    text="👋 Добро пожаловать! Давайте начнем с базовой информации.\nВведите название вашей компании."
                 )
+                logger.debug(
+                    f"Отправлено сообщение: {sent_message.message_id}, thread_id: {sent_message.message_thread_id}")
+
+                if sent_message.message_thread_id:
+                    save_thread_to_db(
+                        db=db,
+                        chat_id=chat_id,
+                        thread_id=sent_message.message_thread_id,
+                        thread_name="Onboarding",
+                        created_by_bot=True
+                    )
             else:
-                # Приветственное сообщение для последующих пользователей
-                await event.bot.send_message(
+                sent_message = await event.bot.send_message(
                     chat_id=chat_id,
                     text=(
                         f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
                         "Вы добавлены к текущей компании. Напишите 'Помощь', чтобы узнать, что я могу делать."
                     )
                 )
+                logger.debug(
+                    f"Отправлено сообщение: {sent_message.message_id}, thread_id: {sent_message.message_thread_id}")
+
+                if sent_message.message_thread_id:
+                    save_thread_to_db(
+                        db=db,
+                        chat_id=chat_id,
+                        thread_id=sent_message.message_thread_id,
+                        thread_name="General",
+                        created_by_bot=False
+                    )
         except Exception as e:
             logger.error(f"Ошибка обработки нового пользователя: {e}", exc_info=True)
         finally:

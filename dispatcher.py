@@ -2,8 +2,7 @@ from db.db import SessionLocal
 from handlers.campaign_delete_handler import handle_delete_campaign_request
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
-from handlers.company_handlers import handle_add_company, handle_view_company, handle_edit_company, \
-    handle_delete_company
+from handlers.company_handlers import handle_add_company, handle_view_company, handle_edit_company
 from handlers.campaign_handlers import handle_add_campaign, handle_view_campaigns
 from logger import logger
 
@@ -29,8 +28,8 @@ async def dispatch_classification(classification: dict, message: Message, state:
             await handle_view_company(message, state)
         elif action_type == "edit" and entity_type == "company":
             await handle_edit_company(message, state)
-        elif action_type == "delete" and entity_type == "company":
-            await handle_delete_company(message, state)
+        # elif action_type == "delete" and entity_type == "company":
+        #     await handle_delete_company(message, state)
         elif action_type == "add" and entity_type == "campaign":
             await handle_add_campaign(message, state)
         elif action_type == "view" and entity_type == "campaign":

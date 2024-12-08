@@ -1,9 +1,11 @@
 from aiogram import Router
+from aiogram.exceptions import TelegramMigrateToChat
 from aiogram.types import Message, ChatMemberUpdated, ContentType
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.orm import Session
+from aiogram.filters import Command
 
-from admin.ThreadManager import save_thread_to_db
+from admin.ThreadManager import save_thread_to_db, create_new_thread
 from classifier import classify_message
 from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
@@ -19,6 +21,58 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+
+@router.message(Command("init"))
+async def initialize_topics(message: Message):
+    """
+    Команда /init: Создание тем в чате.
+    """
+    chat_id = message.chat.id
+    bot = message.bot
+
+    try:
+        # Получаем информацию о чате
+        chat = await bot.get_chat(chat_id)
+
+        # Проверяем, поддерживает ли чат темы
+        if not chat.is_forum:
+            await message.answer("Этот чат не поддерживает темы. Включите их в настройках чата.")
+            return
+
+        # Проверяем права бота
+        admins = await bot.get_chat_administrators(chat_id)
+        bot_admin = next((admin for admin in admins if admin.user.id == bot.id), None)
+        if not bot_admin or not bot_admin.can_manage_chat:
+            await message.answer("У бота недостаточно прав для управления темами.")
+            return
+
+        db: Session = SessionLocal()
+        try:
+            created_threads = []
+
+            # Создание темы "Notification"
+            notification_topic_id = await create_new_thread(bot, chat_id, "Notification")
+            if notification_topic_id:
+                save_thread_to_db(db, chat_id, notification_topic_id, "Notification")
+                created_threads.append("Notification")
+
+            logger.info(f"Темы {created_threads} успешно созданы в чате {chat_id}.")
+            await message.answer(f"Темы {', '.join(created_threads)} успешно созданы.")
+        except Exception as e:
+            logger.error(f"Ошибка при создании тем в чате {chat_id}: {e}", exc_info=True)
+            await message.answer("Произошла ошибка при создании тем. Проверьте логи бота.")
+        finally:
+            db.close()
+
+    except TelegramMigrateToChat as migrate_error:
+        new_chat_id = migrate_error.migrate_to_chat_id
+        logger.warning(f"Чат обновлён до супергруппы. Новый ID: {new_chat_id}")
+        await message.answer(f"Чат обновлён до супергруппы. Новый ID: {new_chat_id}. Повторите команду.")
+    except Exception as e:
+        logger.error(f"Ошибка обработки команды /init в чате {chat_id}: {e}", exc_info=True)
+        await message.answer("Произошла ошибка при обработке команды. Проверьте логи бота.")
+
+
 @router.chat_member()
 async def greet_new_user(event: ChatMemberUpdated, state: FSMContext):
     """
@@ -28,61 +82,39 @@ async def greet_new_user(event: ChatMemberUpdated, state: FSMContext):
         telegram_user = event.new_chat_member.user
         chat_id = event.chat.id
 
-        # Проверяем, поддерживает ли чат темы
-        chat = await event.bot.get_chat(chat_id)
-        logger.debug(f"Чат {chat_id} поддерживает темы: {chat.is_forum}")
-
-        if not chat.is_forum:
-            logger.error(f"Темы не включены в чате {chat_id}. Поле message_thread_id не будет доступно.")
-            return
-
         logger.debug(f"Новый пользователь {telegram_user.full_name} добавлен в чат {chat_id}. Проверка в базе данных.")
         db: Session = SessionLocal()
         try:
-            # Проверяем существование компании
+            # Проверяем существование компании до вызова create_or_get_company_and_user
             existing_company = db.query(Company).filter_by(chat_id=str(chat_id)).first()
-            logger.debug(f"Компания найдена: {existing_company}")
 
             # Создаём или получаем компанию и пользователя
             user = create_or_get_company_and_user(db, telegram_user, chat_id)
 
             if not existing_company:
-                await state.update_data(company_id=user.company_id)
+                # Если компания не существовала, это первый пользователь компании
+                await state.update_data(company_id=user.company_id)  # Сохраняем company_id в состояние
                 await state.set_state(OnboardingState.waiting_for_company_name)
-                sent_message = await event.bot.send_message(
-                    chat_id=chat_id,
-                    text="👋 Добро пожаловать! Давайте начнем с базовой информации.\nВведите название вашей компании."
-                )
-                logger.debug(
-                    f"Отправлено сообщение: {sent_message.message_id}, thread_id: {sent_message.message_thread_id}")
+                current_state = await state.get_state()  # Проверяем установленное состояние
+                logger.debug(f"Состояние после установки: {current_state}")
 
-                if sent_message.message_thread_id:
-                    save_thread_to_db(
-                        db=db,
-                        chat_id=chat_id,
-                        thread_id=sent_message.message_thread_id,
-                        thread_name="Onboarding",
-                        created_by_bot=True
+                # Отправляем сообщение с началом онбординга
+                await event.bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "👋 Добро пожаловать! Давайте начнем с базовой информации.\n"
+                        "Введите название вашей компании."
                     )
+                )
             else:
-                sent_message = await event.bot.send_message(
+                # Приветственное сообщение для последующих пользователей
+                await event.bot.send_message(
                     chat_id=chat_id,
                     text=(
                         f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
                         "Вы добавлены к текущей компании. Напишите 'Помощь', чтобы узнать, что я могу делать."
                     )
                 )
-                logger.debug(
-                    f"Отправлено сообщение: {sent_message.message_id}, thread_id: {sent_message.message_thread_id}")
-
-                if sent_message.message_thread_id:
-                    save_thread_to_db(
-                        db=db,
-                        chat_id=chat_id,
-                        thread_id=sent_message.message_thread_id,
-                        thread_name="General",
-                        created_by_bot=False
-                    )
         except Exception as e:
             logger.error(f"Ошибка обработки нового пользователя: {e}", exc_info=True)
         finally:
@@ -95,13 +127,18 @@ async def handle_message(message: Message, state: FSMContext):
     Если пользователь добавлен в чат, запускается онбординг.
     Если состояние отсутствует, устанавливается базовое состояние, и сообщение направляется в классификатор.
     """
+    # Проверяем, является ли отправитель ботом
+    if message.from_user and message.from_user.is_bot:
+        # Игнорируем сообщения от бота
+        return
+
     current_state = await state.get_state()
     logger.debug(f"Получено сообщение: {message.text}. Текущее состояние: {current_state}")
 
-    # Проверяем системные сообщения
+    # Обработка системных сообщений
     if message.content_type in {ContentType.NEW_CHAT_MEMBERS, ContentType.LEFT_CHAT_MEMBER}:
+        logger.debug("Обрабатываем системное сообщение (новые участники или выход).")
         if message.content_type == ContentType.NEW_CHAT_MEMBERS:
-            # Обрабатываем добавление нового пользователя
             for new_member in message.new_chat_members:
                 event = ChatMemberUpdated(
                     chat=message.chat,
@@ -151,4 +188,4 @@ async def handle_message(message: Message, state: FSMContext):
     elif current_state == OnboardingState.confirmation.state:
         await handle_confirmation(message, state)
     else:
-        await message.answer("Неизвестное состояние. Пожалуйста, попробуйте снова.")
+        logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")

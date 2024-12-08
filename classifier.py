@@ -27,7 +27,7 @@ def classify_message(message_text: str) -> dict:
 
         # Format the prompt with the escaped message text
         prompt = BASE_PROMPT.format(input_text=escaped_text)
-        logger.debug(f"Formatted prompt: {prompt}")
+        #logger.debug(f"Formatted prompt: {prompt}")
 
         # Call the OpenAI API
         logger.debug("Calling OpenAI API...")
@@ -37,11 +37,11 @@ def classify_message(message_text: str) -> dict:
         )
 
         # Log the full response from the model
-        logger.debug(f"Full response from OpenAI: {response}")
+        #logger.debug(f"Full response from OpenAI: {response}")
 
         # Extract the content from the response
         content = response.choices[0].message.content.strip()
-        logger.debug(f"Model response content: {content}")
+        #logger.debug(f"Model response content: {content}")
 
         # Clean the content by removing any prefixes like "Ответ:"
         if content.lower().startswith("ответ:"):

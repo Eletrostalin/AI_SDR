@@ -26,7 +26,6 @@ class ChatThread(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     chat_id = Column(BigInteger, nullable=False, index=True)
     thread_id = Column(BigInteger, nullable=False, index=True)
-    created_by_bot = Column(Boolean, default=False, nullable=False)
     thread_name = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
 

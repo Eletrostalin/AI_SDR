@@ -6,15 +6,14 @@ from sqlalchemy.orm import Session
 from admin.ThreadManager import create_thread
 from db.db_campaign import get_campaigns_by_company_id
 from logger import logger
-from config import OPENAI_API_KEY
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
 from db.models import Campaigns, ChatThread
-from utils.google_doc import create_google_sheets_table
+from utils.google_doc import create_excel_table
 from utils.states import AddCampaignState, BaseState
 from classifier import extract_campaign_data_with_validation
 from aiogram import Router
-from aiogram.types import Message
+from aiogram.types import Message, FSInputFile
 from aiogram.fsm.context import FSMContext
 
 from utils.utils import process_message
@@ -203,7 +202,7 @@ async def handle_view_campaigns(message: Message, state):
             await message.reply("У вас нет активных рекламных кампаний.")
             return
 
-        # Формируем данные для таблицы Google Docs
+        # Формируем данные для таблицы Excel
         data = [["ID", "Название кампании", "Статус", "Дата создания", "Дата завершения"]]  # Заголовки таблицы
         data += [
             [
@@ -217,13 +216,14 @@ async def handle_view_campaigns(message: Message, state):
         ]
 
         # Логируем сформированные данные для отладки
-        logger.debug(f"Сформированные данные для Google Docs: {data}")
+        logger.debug(f"Сформированные данные для Excel: {data}")
 
-        # Создаем Google Doc
-        google_doc_url = create_google_sheets_table(data, title=f"Рекламные кампании - {company.name}")
+        # Создаем Excel-документ
+        file_path = create_excel_table(data, file_name=f"campaigns_{company.name}.xlsx")
 
-        # Отправляем ссылку на документ
-        await message.reply(f"Ваши рекламные кампании: [Открыть документ]({google_doc_url})", parse_mode="Markdown")
+        # Отправляем Excel-файл пользователю
+        excel_file = FSInputFile(file_path)
+        await message.reply_document(document=excel_file, caption="Вот таблица с вашими кампаниями.")
     except Exception as e:
         logger.error(f"Ошибка при обработке просмотра кампаний: {e}", exc_info=True)
         await message.reply("Произошла ошибка при обработке вашего запроса.")

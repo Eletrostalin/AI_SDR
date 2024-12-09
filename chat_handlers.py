@@ -172,7 +172,6 @@ async def handle_message(message: Message, state: FSMContext):
     # Если состояние не установлено, устанавливаем базовое состояние
     if current_state is None:
         logger.debug("Состояние отсутствует. Устанавливаем базовое состояние и классифицируем сообщение.")
-        await state.set_state(BaseState.default.state)  # Устанавливаем базовое состояние
         try:
             classification = classify_message(message.text)  # Классификация сообщения
             logger.debug(f"Результат классификации: {classification}")

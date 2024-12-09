@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from handlers.company_handlers import handle_add_company, handle_view_company, handle_edit_company
 from handlers.campaign_handlers import handle_add_campaign, handle_view_campaigns
 from logger import logger
+from utils.states import BaseState
 
 
 async def dispatch_classification(classification: dict, message: Message, state: FSMContext):

@@ -186,7 +186,6 @@ async def handle_edit_company(message: Message, state: FSMContext):
     finally:
         db.close()
 
-
 @router.message(StateFilter(EditCompanyState.waiting_for_updated_info))
 async def process_edit_company_information(message: Message, state: FSMContext):
     """
@@ -224,6 +223,7 @@ async def process_edit_company_information(message: Message, state: FSMContext):
             messages=[{"role": "user", "content": prompt}]
         )
         updated_info = response.choices[0].message.content.strip()
+        logger.debug(f"Обновленная информация от модели: {updated_info}")
 
         # Сохраняем обновленные данные для подтверждения
         await state.update_data(updated_info=updated_info)
@@ -265,9 +265,9 @@ async def confirm_edit_company_information(message: Message, state: FSMContext):
                 await state.set_state(BaseState.default)
                 return
 
-            # Обновляем поле `additional_info` в БД
+            # Сохраняем только значение в поле `additional_info`
             company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
-            company_info.additional_info = updated_info
+            company_info.additional_info = updated_info  # Здесь уже сохранится только значение строки
             db.commit()
 
             await message.reply("Изменения успешно сохранены.")

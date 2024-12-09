@@ -4,10 +4,7 @@ from sqlalchemy.orm import Session
 from db.models import ChatThread
 from logger import logger
 
-
-
-
-
+# Создание темы ботом при инициализации
 async def create_new_thread(bot: Bot, chat_id: int, thread_name: str):
     """
     Создание новой темы в супергруппе.
@@ -22,6 +19,27 @@ async def create_new_thread(bot: Bot, chat_id: int, thread_name: str):
         return new_thread.message_thread_id  # Возвращаем ID созданной темы
     except Exception as e:
         logger.error(f"Ошибка создания темы '{thread_name}' в чате {chat_id}: {e}")
+        return None
+
+# Создание темы ботом при добавлении кампании
+async def create_thread(bot, chat_id, thread_name):
+    """
+    Создает тему в чате и возвращает ID созданной темы.
+
+    :param bot: Объект бота
+    :param chat_id: ID чата
+    :param thread_name: Название создаваемой темы
+    :return: ID созданной темы или None в случае ошибки
+    """
+    try:
+        # Создаем тему
+        created_topic = await bot.create_forum_topic(
+            chat_id=chat_id,
+            name=thread_name
+        )
+        return created_topic.message_thread_id  # Возвращаем ID созданной темы
+    except Exception as e:
+        logger.error(f"Ошибка при создании темы '{thread_name}' в чате {chat_id}: {e}", exc_info=True)
         return None
 
 def save_thread_to_db(db: Session, chat_id: int, thread_id: int, thread_name: str):

@@ -12,10 +12,11 @@ from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
 from db.models import Company
 from dispatcher import dispatch_classification
+from handlers.campaign_handlers import process_campaign_information, process_campaign_name, confirm_campaign_creation
 from handlers.company_handlers import process_edit_company_information, confirm_edit_company_information
 from handlers.onboarding_handler import handle_company_name, handle_industry, handle_region, handle_contact_email, \
     handle_contact_phone, handle_additional_details, handle_confirmation
-from utils.states import OnboardingState, BaseState, EditCompanyState
+from utils.states import OnboardingState, BaseState, EditCompanyState, AddCampaignState
 import logging
 
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ async def handle_message(message: Message, state: FSMContext):
         logger.debug("Системное сообщение обработано. Пропускаем обработку.")
         return
 
-    # Если состояние не установлено, устанавливаем базовое состояние
+    # Если состояние не установлено, классифицируем сообщение и устанавливаем базовое состояние
     if current_state is None:
         logger.debug("Состояние отсутствует. Устанавливаем базовое состояние и классифицируем сообщение.")
         try:
@@ -181,15 +182,22 @@ async def handle_message(message: Message, state: FSMContext):
             await message.reply("Произошла ошибка при обработке вашего сообщения. Попробуйте снова.")
         return
 
-        # Обработка состояний редактирования компании
-    if current_state == EditCompanyState.waiting_for_updated_info.state:
-        await process_edit_company_information(message, state)
-        return
-    elif current_state == EditCompanyState.waiting_for_confirmation.state:
-        await confirm_edit_company_information(message, state)
-        return
+    # Маршрутизация по состояниям
+    if current_state.startswith("OnboardingState:"):
+        await handle_onboarding_states(message, state, current_state)
+    elif current_state.startswith("EditCompanyState:"):
+        await handle_edit_company_states(message, state, current_state)
+    elif current_state.startswith("AddCampaignState:"):
+        await handle_add_campaign_states(message, state, current_state)
+    else:
+        logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
+        await message.reply("Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
 
-    # Обработка состояний онбординга
+# Обработка состояний онбординга
+async def handle_onboarding_states(message: Message, state: FSMContext, current_state: str):
+    """
+    Обрабатывает состояния онбординга.
+    """
     if current_state == OnboardingState.waiting_for_company_name.state:
         await handle_company_name(message, state)
     elif current_state == OnboardingState.waiting_for_industry.state:
@@ -204,5 +212,25 @@ async def handle_message(message: Message, state: FSMContext):
         await handle_additional_details(message, state)
     elif current_state == OnboardingState.confirmation.state:
         await handle_confirmation(message, state)
-    else:
-        logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
+
+# Обработка состояний редактирования компании
+async def handle_edit_company_states(message: Message, state: FSMContext, current_state: str):
+    """
+    Обрабатывает состояния редактирования компании.
+    """
+    if current_state == EditCompanyState.waiting_for_updated_info.state:
+        await process_edit_company_information(message, state)
+    elif current_state == EditCompanyState.waiting_for_confirmation.state:
+        await confirm_edit_company_information(message, state)
+
+# Обработка состояний добавления кампании
+async def handle_add_campaign_states(message: Message, state: FSMContext, current_state: str):
+    """
+    Обрабатывает состояния добавления кампании.
+    """
+    if current_state == AddCampaignState.waiting_for_campaign_information.state:
+        await process_campaign_information(message, state)
+    elif current_state == AddCampaignState.waiting_for_campaign_name.state:
+        await process_campaign_name(message, state)
+    elif current_state == AddCampaignState.waiting_for_confirmation.state:
+        await confirm_campaign_creation(message, state)

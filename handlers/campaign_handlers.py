@@ -3,12 +3,13 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from admin.ThreadManager import create_thread
 from db.db_campaign import get_campaigns_by_company_id
 from logger import logger
 from config import OPENAI_API_KEY
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
-from db.models import Campaigns
+from db.models import Campaigns, ChatThread
 from utils.google_doc import create_google_sheets_table
 from utils.states import AddCampaignState, BaseState
 from classifier import extract_campaign_data_with_validation
@@ -32,12 +33,13 @@ async def handle_add_campaign(message: Message, state: FSMContext):
 
 # Обработчик получения информации о кампании
 @router.message(StateFilter(AddCampaignState.waiting_for_campaign_information))
-async def process_campaign_information(message: Message, state: FSMContext, bot):
+async def process_campaign_information(message: Message, state: FSMContext):
     """
     Обрабатывает сообщение с информацией о кампании, отправляет данные модели
     для формирования JSON и сохраняет их в FSMContext.
     """
     try:
+        bot = message.bot  # Получаем объект бота из сообщения
         # Извлечение информации из сообщения
         extracted_info = await process_message(message, bot)
 
@@ -85,7 +87,7 @@ async def process_campaign_information(message: Message, state: FSMContext, bot)
 @router.message(StateFilter(AddCampaignState.waiting_for_confirmation))
 async def confirm_campaign_creation(message: Message, state: FSMContext):
     """
-    Подтверждает добавление кампании в базу данных.
+    Подтверждает добавление кампании в базу данных и создает тему в чате.
     """
     if message.text.lower() in ["да", "верно"]:
         # Получаем данные из состояния
@@ -113,11 +115,34 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
             db.add(new_campaign)
             db.commit()
 
-            await message.reply("Кампания успешно создана!")
+            # Создаем тему в чате
+            bot = message.bot  # Получаем объект бота
+            thread_name = f"Кампания: {campaign_data['campaign_name']}"  # Название темы
+            created_thread_id = await create_thread(bot, chat_id, thread_name)  # Функция для создания темы
+
+            # Записываем информацию о созданной теме в базу данных
+            if created_thread_id:
+                new_thread = ChatThread(
+                    chat_id=chat_id,
+                    thread_id=created_thread_id,
+                    thread_name=thread_name
+                )
+                db.add(new_thread)
+                db.commit()
+
+                await message.reply(
+                    f"Кампания успешно создана, и тема '{thread_name}' была добавлена в чат!"
+                )
+            else:
+                await message.reply("Кампания успешно создана, но тема не была добавлена в чат.")
+
             await state.set_state(BaseState.default)
         except SQLAlchemyError as e:
             await message.reply(f"Ошибка при добавлении кампании: {e}")
             db.rollback()
+        except Exception as e:
+            logger.error(f"Ошибка при создании темы: {e}", exc_info=True)
+            await message.reply("Произошла ошибка при создании темы в чате.")
         finally:
             db.close()
     else:

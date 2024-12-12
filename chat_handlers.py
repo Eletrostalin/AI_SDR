@@ -14,9 +14,10 @@ from db.models import Company
 from dispatcher import dispatch_classification
 from handlers.campaign_handlers import process_campaign_information, process_campaign_name, confirm_campaign_creation
 from handlers.company_handlers import process_edit_company_information, confirm_edit_company_information
+from handlers.email_table_handler import handle_file_upload
 from handlers.onboarding_handler import handle_company_name, handle_industry, handle_region, handle_contact_email, \
     handle_contact_phone, handle_additional_details, handle_confirmation
-from utils.states import OnboardingState, BaseState, EditCompanyState, AddCampaignState
+from utils.states import OnboardingState, BaseState, EditCompanyState, AddCampaignState, AddEmailSegmentationState
 import logging
 
 logger = logging.getLogger(__name__)
@@ -189,6 +190,8 @@ async def handle_message(message: Message, state: FSMContext):
         await handle_edit_company_states(message, state, current_state)
     elif current_state.startswith("AddCampaignState:"):
         await handle_add_campaign_states(message, state, current_state)
+    elif current_state.startswith("AddEmailSegmentationState:"):
+        await handle_add_email_segmentation_states(message, state, current_state)
     else:
         logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
         await message.reply("Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
@@ -212,6 +215,18 @@ async def handle_onboarding_states(message: Message, state: FSMContext, current_
         await handle_additional_details(message, state)
     elif current_state == OnboardingState.confirmation.state:
         await handle_confirmation(message, state)
+
+async def handle_add_email_segmentation_states(message: Message, state: FSMContext, current_state: str):
+    """
+    Обрабатывает состояния добавления email-таблицы.
+    """
+    if current_state == AddEmailSegmentationState.waiting_for_file_upload.state:
+        await handle_file_upload(message, state)
+   # elif current_state == AddEmailSegmentationState.waiting_for_mapping_confirmation.state:
+        # await handle_mapping_confirmation(message, state)
+    else:
+        logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
+        await message.reply("Произошла ошибка. Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
 
 # Обработка состояний редактирования компании
 async def handle_edit_company_states(message: Message, state: FSMContext, current_state: str):

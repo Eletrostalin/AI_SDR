@@ -1,13 +1,9 @@
 from db.db import SessionLocal
 from handlers.campaign_delete_handler import handle_delete_campaign_request
-from aiogram.types import Message
-from aiogram.fsm.context import FSMContext
-from handlers.company_handlers import handle_add_company, handle_view_company, handle_edit_company, \
-    handle_delete_additional_info
+from handlers.company_handlers import handle_view_company, handle_edit_company, handle_delete_additional_info
 from handlers.campaign_handlers import handle_add_campaign, handle_view_campaigns
+from handlers.email_table_handler import handle_email_table_request
 from logger import logger
-from utils.states import BaseState
-
 
 from sqlalchemy.orm import Session
 from db.models import ChatThread
@@ -69,6 +65,8 @@ async def dispatch_classification(classification: dict, message: Message, state:
                 await handle_view_campaigns(message, state)
             elif action_type == "delete" and entity_type == "campaign":
                 await handle_delete_campaign_request(message, state)
+            elif action_type == "add" and entity_type == "email_table":
+                await handle_email_table_request(message, state)
             else:
                 logger.warning(f"Не удалось обработать запрос: {classification}")
                 await message.reply("К сожалению, я не могу обработать ваш запрос. Попробуйте снова.")

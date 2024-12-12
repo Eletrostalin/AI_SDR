@@ -25,6 +25,13 @@ class AddCampaignState(StatesGroup):
     waiting_for_campaign_name = State()
     waiting_for_confirmation = State()
 
+class AddEmailSegmentationState(StatesGroup):
+    """
+    Состояния для добавления таблицы сегментации по email.
+    """
+    waiting_for_file_upload = State()  # Ожидание загрузки файла
+    waiting_for_mapping_confirmation = State()  # Подтверждение сопоставления колонок
+
 class EditCompanyState(StatesGroup):
     waiting_for_updated_info = State()
     waiting_for_confirmation = State()

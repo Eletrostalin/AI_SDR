@@ -80,29 +80,49 @@ class Campaigns(Base):
     templates = relationship("Templates", back_populates="campaign")
     company = relationship("Company", back_populates="campaigns")
 
-# Таблица EmailTables
-class EmailTables(Base):
+
+class EmailSegments(Base):
+    __tablename__ = "email_segments"
+
+    email_id = Column(Integer, primary_key=True, autoincrement=True)
+    email_table_name = Column(String, ForeignKey("email_tables.table_name"), nullable=False)  # Связь по имени таблицы
+    name = Column(String, nullable=True)
+    tax_id = Column(String, nullable=True)
+    registration_date = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    region = Column(String, nullable=True)
+    status = Column(String, nullable=True)
+    msp_registry = Column(String, nullable=True)
+    director_name = Column(String, nullable=True)
+    director_position = Column(String, nullable=True)
+    phone_number = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    website = Column(String, nullable=True)
+    primary_activity = Column(String, nullable=True)
+    other_activities = Column(String, nullable=True)
+    licenses = Column(String, nullable=True)
+    revenue = Column(String, nullable=True)
+    balance = Column(String, nullable=True)
+    net_profit_or_loss = Column(String, nullable=True)
+    arbitration_defendant = Column(String, nullable=True)
+    employee_count = Column(String, nullable=True)
+    branch_count = Column(String, nullable=True)
+
+    # Реляция с EmailTable
+    email_table = relationship("EmailTable", back_populates="segments")
+
+
+class EmailTable(Base):
     __tablename__ = "email_tables"
 
     email_table_id = Column(Integer, primary_key=True, autoincrement=True)
-    company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
-    telegram_id = Column(String, nullable=False)
-    upload_date = Column(DateTime, default=func.now(), nullable=False)
-    table_name = Column(String, nullable=False)
-    status = Column(String, default="uploaded", nullable=False)
-    row_count = Column(Integer, nullable=False)
+    company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)  # Связь с Company
+    table_name = Column(String, nullable=False, unique=True)  # Уникальное имя таблицы для каждой компании
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
-# Таблица EmailSegmentation
-class EmailSegmentation(Base):
-    __tablename__ = "email_segmentation"
-
-    email_segment_id = Column(Integer, primary_key=True, autoincrement=True)
-    email_table_id = Column(Integer, ForeignKey("email_tables.email_table_id"), nullable=False)
-    region = Column(String, nullable=True)
-    interest = Column(String, nullable=True)
-    contact_email = Column(String, nullable=False)
-    contact_name = Column(String, nullable=True)
-    company_name = Column(String, nullable=True)
+    # Связь с сегментами
+    segments = relationship("EmailSegments", back_populates="email_table")
 
 # Таблица Templates
 class Templates(Base):

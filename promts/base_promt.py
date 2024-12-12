@@ -18,6 +18,7 @@ BASE_PROMPT = """
 - "Удалить всю информацию о моей компании": {{"action_type": "delete", "entity_type": "company"}}
 - "Показать данные компании": {{"action_type": "view", "entity_type": "company"}}
 - "Изменить информацию о компании": {{"action_type": "edit", "entity_type": "company"}}
+- "Показать таблицу с email": {{"action_type": "view", "entity_type": "email_table"}}
 - "Непонятный запрос": {{"action_type": "unknown", "entity_type": "unknown"}}
 
 Теперь проанализируй следующий текст: {input_text}

@@ -81,37 +81,6 @@ class Campaigns(Base):
     company = relationship("Company", back_populates="campaigns")
 
 
-class EmailSegments(Base):
-    __tablename__ = "email_segments"
-
-    email_id = Column(Integer, primary_key=True, autoincrement=True)
-    email_table_name = Column(String, ForeignKey("email_tables.table_name"), nullable=False)  # Связь по имени таблицы
-    name = Column(String, nullable=True)
-    tax_id = Column(String, nullable=True)
-    registration_date = Column(String, nullable=True)
-    address = Column(String, nullable=True)
-    region = Column(String, nullable=True)
-    status = Column(String, nullable=True)
-    msp_registry = Column(String, nullable=True)
-    director_name = Column(String, nullable=True)
-    director_position = Column(String, nullable=True)
-    phone_number = Column(String, nullable=True)
-    email = Column(String, nullable=True)
-    website = Column(String, nullable=True)
-    primary_activity = Column(String, nullable=True)
-    other_activities = Column(String, nullable=True)
-    licenses = Column(String, nullable=True)
-    revenue = Column(String, nullable=True)
-    balance = Column(String, nullable=True)
-    net_profit_or_loss = Column(String, nullable=True)
-    arbitration_defendant = Column(String, nullable=True)
-    employee_count = Column(String, nullable=True)
-    branch_count = Column(String, nullable=True)
-
-    # Реляция с EmailTable
-    email_table = relationship("EmailTable", back_populates="segments")
-
-
 class EmailTable(Base):
     __tablename__ = "email_tables"
 
@@ -120,9 +89,6 @@ class EmailTable(Base):
     table_name = Column(String, nullable=False, unique=True)  # Уникальное имя таблицы для каждой компании
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
-
-    # Связь с сегментами
-    segments = relationship("EmailSegments", back_populates="email_table")
 
 # Таблица Templates
 class Templates(Base):

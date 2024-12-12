@@ -1,10 +1,12 @@
 import pandas as pd
 import json
 import logging
+
+
 from classifier import client
 from db.db import engine, SessionLocal
 from db.dynamic_table_manager import create_dynamic_email_table
-from db.email_table_db import save_data_to_db
+from db.email_table_db import save_data_to_db, create_email_table_record
 from promts.email_table_promt import generate_column_mapping_prompt, EMAIL_SEGMENT_COLUMNS
 from sqlalchemy.orm import Session
 
@@ -86,13 +88,34 @@ async def process_email_table(file_path: str, segment_table_name: str, bot, mess
         create_dynamic_email_table(engine, segment_table_name)
         logger.info(f"Таблица '{segment_table_name}' создана или уже существует.")
 
-        # Сохранение данных в БД
+        # Добавление записи в сводную таблицу EmailTable
         db: Session = SessionLocal()
         try:
+            from db.models import EmailTable, Company
+
+            # Получение компании по chat_id
+            chat_id = str(message.chat.id)  # Преобразование chat_id в строку
+            company = db.query(Company).filter(Company.chat_id == chat_id).first()
+            if not company:
+                await message.reply("Компания не найдена. Убедитесь, что вы зарегистрировали свою компанию.")
+                return False
+
+            # Проверяем и создаем запись в EmailTable
+            if not create_email_table_record(
+                db,
+                company_id=company.company_id,
+                table_name=segment_table_name,
+                description="Таблица сегментации email"
+            ):
+                await message.reply("Ошибка при добавлении записи в сводную таблицу.")
+                logger.error(f"Ошибка при создании записи для таблицы: {segment_table_name}")
+                return False
+
+            # Сохранение данных в БД
             if save_data_to_db(df.to_dict(orient="records"), segment_table_name, db):
+                # Отправляем подтверждение пользователю
                 await message.reply("Данные из таблицы успешно обработаны и сохранены.")
                 logger.info(f"Данные успешно сохранены в таблицу: {segment_table_name}")
-                return True
             else:
                 await message.reply("Ошибка при сохранении данных в базу.")
                 logger.error(f"Ошибка при сохранении данных в таблицу: {segment_table_name}")

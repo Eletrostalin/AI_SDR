@@ -12,7 +12,8 @@ from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
 from db.models import Company
 from dispatcher import dispatch_classification
-from handlers.campaign_handlers import process_campaign_information, process_campaign_name, confirm_campaign_creation
+from handlers.campaign_handlers import process_campaign_name, process_start_date, process_end_date, \
+    process_campaign_params, handle_full_campaign_data, confirm_campaign_creation
 from handlers.company_handlers import process_edit_company_information, confirm_edit_company_information
 from handlers.email_table_handler import handle_file_upload
 from handlers.onboarding_handler import handle_company_name, handle_industry, handle_region, handle_contact_email, \
@@ -244,8 +245,20 @@ async def handle_add_campaign_states(message: Message, state: FSMContext, curren
     Обрабатывает состояния добавления кампании.
     """
     if current_state == AddCampaignState.waiting_for_campaign_information.state:
-        await process_campaign_information(message, state)
+        # Обработка полного текста с информацией о кампании
+        await handle_full_campaign_data(message, state)
     elif current_state == AddCampaignState.waiting_for_campaign_name.state:
+        # Обработка ввода названия кампании
         await process_campaign_name(message, state)
+    elif current_state == AddCampaignState.waiting_for_start_date.state:
+        # Обработка ввода даты начала кампании
+        await process_start_date(message, state)
+    elif current_state == AddCampaignState.waiting_for_end_date.state:
+        # Обработка ввода даты окончания кампании
+        await process_end_date(message, state)
+    elif current_state == AddCampaignState.waiting_for_params.state:
+        # Обработка ввода дополнительных параметров кампании
+        await process_campaign_params(message, state)
     elif current_state == AddCampaignState.waiting_for_confirmation.state:
+        # Обработка подтверждения данных кампании
         await confirm_campaign_creation(message, state)

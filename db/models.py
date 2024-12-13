@@ -90,6 +90,42 @@ class EmailTable(Base):
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
+class ContentPlan(Base):
+    __tablename__ = "content_plans"
+
+    content_plan_id = Column(Integer, primary_key=True, autoincrement=True)
+    company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)  # Связь с Company
+    telegram_id = Column(String, nullable=False)  # Telegram ID создателя
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    name = Column(String, nullable=False)  # Название контентного плана
+    wave_count = Column(Integer, nullable=False, default=0)  # Количество волн
+    description = Column(Text, nullable=True)  # Описание контентного плана
+    campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"), nullable=False)  # Связь с Campaigns
+
+    # Связи
+    waves = relationship("Waves", back_populates="content_plan")
+    company = relationship("Company", back_populates="content_plans")
+    campaign = relationship("Campaigns", back_populates="content_plans")
+
+class Waves(Base):
+    __tablename__ = "waves"
+
+    wave_id = Column(Integer, primary_key=True, autoincrement=True)
+    content_plan_id = Column(Integer, ForeignKey("content_plans.content_plan_id"), nullable=False)  # Связь с ContentPlan
+    campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"), nullable=True)  # Связь с Campaigns
+    company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)  # Связь с Company
+    send_time = Column(DateTime, nullable=False)  # Время отправки
+    send_date = Column(DateTime, nullable=False)  # Дата отправки
+    subject = Column(String, nullable=False)  # Тема
+    template_id = Column(Integer, ForeignKey("templates.template_id"), nullable=True)  # ID шаблона
+
+    # Связь с ContentPlan
+    content_plan = relationship("ContentPlan", back_populates="waves")
+    # Связь с Campaigns
+    campaign = relationship("Campaigns", back_populates="waves")
+    # Связь с Company
+    company = relationship("Company", back_populates="waves")
+
 # Таблица Templates
 class Templates(Base):
     __tablename__ = "templates"
@@ -103,35 +139,3 @@ class Templates(Base):
 
     campaign = relationship("Campaigns", back_populates="templates")
 
-# Таблица MailingSettings
-class MailingSettings(Base):
-    __tablename__ = "mailing_settings"
-
-    settings_id = Column(Integer, primary_key=True, autoincrement=True)
-    company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
-    schedule = Column(String, nullable=False)
-    customization_level = Column(String, nullable=True)
-    template_id = Column(Integer, ForeignKey("templates.template_id"), nullable=False)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-
-# Таблица LeadResponses
-class LeadResponses(Base):
-    __tablename__ = "lead_responses"
-
-    response_id = Column(Integer, primary_key=True, autoincrement=True)
-    lead_id = Column(Integer, ForeignKey("email_segmentation.email_segment_id"), nullable=False)
-    received_at = Column(DateTime, default=func.now(), nullable=False)
-    sender_email = Column(String, nullable=False)
-    warmth_score = Column(Integer, nullable=True)
-    status = Column(String, default="unprocessed", nullable=False)
-
-# Таблица ResponseSettings
-class ResponseSettings(Base):
-    __tablename__ = "response_settings"
-
-    response_settings_id = Column(Integer, primary_key=True, autoincrement=True)
-    company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
-    auto_reply = Column(Boolean, default=False, nullable=False)
-    draft_reply = Column(Boolean, default=False, nullable=False)
-    notification_only = Column(Boolean, default=False, nullable=False)
-    no_notification = Column(Boolean, default=False, nullable=False)

@@ -1,7 +1,8 @@
 from db.db import SessionLocal
 from handlers.campaign_delete_handler import handle_delete_campaign_request
+from handlers.campaign_view_handler import handle_view_campaigns
 from handlers.company_handlers import handle_view_company, handle_edit_company, handle_delete_additional_info
-from handlers.campaign_handlers import handle_add_campaign, handle_view_campaigns
+from handlers.campaign_handlers import handle_add_campaign
 from handlers.email_table_handler import handle_email_table_request, handle_view_email_table
 from logger import logger
 

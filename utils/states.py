@@ -21,9 +21,12 @@ class AddCompanyState(StatesGroup):
     waiting_for_company_name = State()
 
 class AddCampaignState(StatesGroup):
-    waiting_for_campaign_information = State()
-    waiting_for_campaign_name = State()
-    waiting_for_confirmation = State()
+    waiting_for_campaign_name = State()  # Ожидание названия кампании
+    waiting_for_start_date = State()    # Ожидание даты начала кампании
+    waiting_for_end_date = State()      # Ожидание даты окончания кампании
+    waiting_for_params = State()        # Ожидание дополнительных параметров кампании
+    waiting_for_confirmation = State()  # Ожидание подтверждения данных кампании
+    waiting_for_campaign_information = State()  # Ожидание полного описания кампании (альтернативный сценарий)
 
 class AddEmailSegmentationState(StatesGroup):
     """

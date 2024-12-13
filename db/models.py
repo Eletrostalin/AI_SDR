@@ -20,6 +20,7 @@ class User(Base):
     # Связь с таблицей companies
     company = relationship("Company", back_populates="users")
 
+
 class ChatThread(Base):
     __tablename__ = "chat_threads"
 
@@ -29,7 +30,7 @@ class ChatThread(Base):
     thread_name = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
 
-# Таблица Company
+
 class Company(Base):
     __tablename__ = "companies"
 
@@ -40,11 +41,14 @@ class Company(Base):
     status = Column(String, default="active", nullable=False)
     name = Column(String, nullable=True)
 
-    info = relationship("CompanyInfo", back_populates="company")
+    # Связи
+    info = relationship("CompanyInfo", back_populates="company", uselist=False)
     campaigns = relationship("Campaigns", back_populates="company")
     users = relationship("User", back_populates="company")
+    content_plans = relationship("ContentPlan", back_populates="company")
+    waves = relationship("Waves", back_populates="company")
 
-# Таблица CompanyInfo
+
 class CompanyInfo(Base):
     __tablename__ = "company_info"
 
@@ -60,10 +64,10 @@ class CompanyInfo(Base):
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, onupdate=func.now())
 
-    # Связь с таблицей Company
+    # Связь с Company
     company = relationship("Company", back_populates="info")
 
-# Таблица Campaigns
+
 class Campaigns(Base):
     __tablename__ = "campaigns"
 
@@ -77,7 +81,10 @@ class Campaigns(Base):
     status_for_user = Column(Boolean, default=True, nullable=False)  # Новая колонка
     params = Column(JSON, nullable=True)  # Поле для хранения параметров
 
+    # Связи
     templates = relationship("Templates", back_populates="campaign")
+    content_plans = relationship("ContentPlan", back_populates="campaign")
+    waves = relationship("Waves", back_populates="campaign")
     company = relationship("Company", back_populates="campaigns")
 
 
@@ -89,6 +96,7 @@ class EmailTable(Base):
     table_name = Column(String, nullable=False, unique=True)  # Уникальное имя таблицы для каждой компании
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
 
 class ContentPlan(Base):
     __tablename__ = "content_plans"
@@ -107,6 +115,7 @@ class ContentPlan(Base):
     company = relationship("Company", back_populates="content_plans")
     campaign = relationship("Campaigns", back_populates="content_plans")
 
+
 class Waves(Base):
     __tablename__ = "waves"
 
@@ -119,14 +128,12 @@ class Waves(Base):
     subject = Column(String, nullable=False)  # Тема
     template_id = Column(Integer, ForeignKey("templates.template_id"), nullable=True)  # ID шаблона
 
-    # Связь с ContentPlan
+    # Связи
     content_plan = relationship("ContentPlan", back_populates="waves")
-    # Связь с Campaigns
     campaign = relationship("Campaigns", back_populates="waves")
-    # Связь с Company
     company = relationship("Company", back_populates="waves")
 
-# Таблица Templates
+
 class Templates(Base):
     __tablename__ = "templates"
 
@@ -137,5 +144,5 @@ class Templates(Base):
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
 
+    # Связь с Campaigns
     campaign = relationship("Campaigns", back_populates="templates")
-

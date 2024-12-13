@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from admin.ThreadManager import create_thread
+from db.db_campaign import create_campaign
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
@@ -93,9 +94,15 @@ async def process_start_date(message: Message, state: FSMContext):
     start_date = message.text.strip()
     try:
         from datetime import datetime
-        # Проверяем формат ДД.ММ.ГГГГ
-        datetime.strptime(start_date, "%d.%m.%Y")
-        await state.update_data(start_date=start_date)
+        # Проверяем формат даты
+        start_date = datetime.strptime(start_date, "%d.%m.%Y").strftime("%Y-%m-%d")
+
+        # Обновляем данные в FSM
+        data = await state.get_data()
+        campaign_data = data.get("campaign_data", {})
+        campaign_data["start_date"] = start_date
+        await state.update_data(campaign_data=campaign_data)
+
         await message.reply("Введите дату окончания кампании (в формате ДД.ММ.ГГГГ):")
         await state.set_state(AddCampaignState.waiting_for_end_date)
     except ValueError:
@@ -112,11 +119,26 @@ async def process_end_date(message: Message, state: FSMContext):
         from datetime import datetime
         # Проверяем формат ДД.ММ.ГГГГ
         datetime.strptime(end_date, "%d.%m.%Y")
-        await state.update_data(end_date=end_date)
+
+        # Сохраняем дату окончания в данные состояния
+        state_data = await state.get_data()
+        campaign_data = state_data.get("campaign_data", {})
+        campaign_data["end_date"] = end_date
+        await state.update_data(campaign_data=campaign_data)
+
+        logger.debug(f"Дата окончания кампании обновлена: {end_date}")
+
+        # Переключаем состояние на ожидание подтверждения
         await message.reply(
-            "Укажите дополнительные параметры"
+            "Все данные собраны. Проверьте информацию:\n"
+            f"Название: {campaign_data.get('campaign_name', 'Не указано')}\n"
+            f"Дата начала: {campaign_data.get('start_date', 'Не указано')}\n"
+            f"Дата окончания: {campaign_data.get('end_date', 'Не указано')}\n"
+            f"Параметры: {campaign_data.get('params', {})}\n"
+            "Все верно? (да/нет)"
         )
-        await state.set_state(AddCampaignState.waiting_for_params)
+        await state.set_state(AddCampaignState.waiting_for_confirmation)
+
     except ValueError:
         await message.reply("Некорректный формат даты. Укажите дату окончания в формате ДД.ММ.ГГГГ.")
 
@@ -125,16 +147,17 @@ async def process_end_date(message: Message, state: FSMContext):
 @router.message(StateFilter(AddCampaignState.waiting_for_params))
 async def process_campaign_params(message: Message, state: FSMContext):
     """
-    Обрабатывает параметры кампании. Пользователь вводит ключ: значение.
+    Обрабатывает параметры кампании.
     """
     text = message.text.strip()
     if text.lower() == "готово":
         # Завершаем ввод параметров и показываем подтверждение
         state_data = await state.get_data()
-        campaign_name = state_data.get("campaign_name", "Не указано")
-        start_date = state_data.get("start_date", "Не указано")
-        end_date = state_data.get("end_date", "Не указано")
-        params = state_data.get("params", {})
+        campaign_data = state_data.get("campaign_data", {})
+        campaign_name = campaign_data.get("campaign_name", "Не указано")
+        start_date = campaign_data.get("start_date", "Не указано")
+        end_date = campaign_data.get("end_date", "Не указано")
+        params = campaign_data.get("params", {})
         params_str = "\n".join([f"{k}: {v}" for k, v in params.items()]) if params else "Нет параметров"
 
         await message.reply(
@@ -153,74 +176,101 @@ async def process_campaign_params(message: Message, state: FSMContext):
             return
 
         key, value = map(str.strip, text.split(":", 1))
-        async with state.proxy() as data:
-            if "params" not in data:
-                data["params"] = {}
-            data["params"][key] = value
+        state_data = await state.get_data()
+        campaign_data = state_data.get("campaign_data", {})
+        params = campaign_data.get("params", {})
+        params[key] = value
+        campaign_data["params"] = params
+        await state.update_data(campaign_data=campaign_data)
 
         # Сразу запрашиваем следующую строку
         await message.reply("Параметр добавлен. Укажите следующий параметр или напишите 'готово', чтобы продолжить.")
 
 
-@router.message(StateFilter(AddCampaignState.waiting_for_confirmation))
+router.message(StateFilter(AddCampaignState.waiting_for_confirmation))
 async def confirm_campaign_creation(message: Message, state: FSMContext):
     """
     Подтверждает добавление кампании в базу данных и создает тему в чате.
     """
-    if message.text.lower() in ["да", "верно"]:
-        # Получаем данные из состояния
-        state_data = await state.get_data()
-        campaign_name = state_data.get("campaign_name", "Не указано")
-        start_date = state_data.get("start_date", "Не указано")
-        end_date = state_data.get("end_date", "Не указано")
-        params = state_data.get("params", {})
 
-        db = SessionLocal()
-        try:
-            chat_id = str(message.chat.id)
-            company = get_company_by_chat_id(db, chat_id)
-            if not company:
-                await message.reply("Ошибка: Компания не найдена.")
-                return
+    current_state = await state.get_state()
+    if current_state != AddCampaignState.waiting_for_confirmation.state:
+        logger.warning(f"Обработчик вызван в некорректном состоянии: {current_state}")
+        return
 
-            # Создаем новую кампанию
-            new_campaign = Campaigns(
-                company_id=company.company_id,
-                campaign_name=campaign_name,
-                start_date=start_date,
-                end_date=end_date,
-                params=params,
-            )
-            db.add(new_campaign)
-            db.commit()
+    try:
+        # Логируем входящее сообщение и текущее состояние
+        logger.debug(f"Подтверждение кампании. Сообщение: {message.text}. Текущее состояние: {await state.get_state()}")
 
-            # Создаем тему в чате
-            bot = message.bot
-            thread_name = f"Кампания: {campaign_name}"
-            created_thread_id = await create_thread(bot, chat_id, thread_name)
-            if created_thread_id:
-                new_thread = ChatThread(
-                    chat_id=chat_id,
-                    thread_id=created_thread_id,
-                    thread_name=thread_name,
+        # Проверяем текст подтверждения
+        if message.text.lower() in ["да", "верно"]:
+            # Получаем данные из состояния
+            state_data = await state.get_data()
+            campaign_name = state_data.get("campaign_name", "Не указано")
+            start_date = state_data.get("start_date", "Не указано")
+            end_date = state_data.get("end_date", "Не указано")
+            params = state_data.get("params", {})
+
+            logger.debug(f"Получены данные кампании из состояния: campaign_name={campaign_name}, start_date={start_date}, end_date={end_date}, params={params}")
+
+            db = SessionLocal()
+            try:
+                # Получаем компанию по chat_id
+                chat_id = str(message.chat.id)
+                company = get_company_by_chat_id(db, chat_id)
+                if not company:
+                    logger.error(f"Компания не найдена для chat_id: {chat_id}")
+                    await message.reply("Ошибка: Компания не найдена.")
+                    return
+
+                logger.debug(f"Компания найдена: company_id={company.company_id}, name={company.name}")
+
+                # Создаем новую кампанию через create_campaign
+                new_campaign = create_campaign(
+                    db=db,
+                    company_id=company.company_id,
+                    campaign_name=campaign_name,
+                    start_date=start_date,
+                    end_date=end_date,
+                    params=params
                 )
-                db.add(new_thread)
-                db.commit()
-                await message.reply(
-                    f"Кампания '{campaign_name}' успешно создана, и тема '{thread_name}' добавлена в чат!"
-                )
-            else:
-                await message.reply(f"Кампания '{campaign_name}' успешно создана, но тема не была добавлена в чат.")
+                logger.info(f"Кампания создана: id={new_campaign.campaign_id}, name={new_campaign.campaign_name}")
 
+                # Создаем тему в чате
+                bot = message.bot
+                thread_name = f"Кампания: {campaign_name}"
+                created_thread_id = await create_thread(bot, chat_id, thread_name)
+
+                if created_thread_id:
+                    logger.debug(f"Тема создана: thread_id={created_thread_id}, thread_name={thread_name}")
+                    new_thread = ChatThread(
+                        chat_id=chat_id,
+                        thread_id=created_thread_id,
+                        thread_name=thread_name,
+                    )
+                    db.add(new_thread)
+                    db.commit()
+                    await message.reply(
+                        f"Кампания '{campaign_name}' успешно создана, и тема '{thread_name}' добавлена в чат!"
+                    )
+                else:
+                    logger.warning(f"Тема для кампании '{campaign_name}' не была добавлена в чат.")
+                    await message.reply(f"Кампания '{campaign_name}' успешно создана, но тема не была добавлена в чат.")
+
+                await state.set_state(BaseState.default)
+            except ValueError as ve:
+                logger.error(f"Ошибка при создании кампании: {ve}")
+                await message.reply(str(ve))
+            except SQLAlchemyError as e:
+                logger.error(f"Ошибка SQLAlchemy при создании кампании: {e}")
+                await message.reply("Произошла ошибка при добавлении кампании.")
+                db.rollback()
+            finally:
+                db.close()
+        else:
+            logger.info("Пользователь отменил создание кампании.")
+            await message.reply("Добавление кампании отменено.")
             await state.set_state(BaseState.default)
-        except SQLAlchemyError as e:
-            await message.reply(f"Ошибка при добавлении кампании: {e}")
-            db.rollback()
-        except Exception as e:
-            logger.error(f"Ошибка при создании кампании: {e}", exc_info=True)
-            await message.reply("Произошла ошибка при создании кампании.")
-        finally:
-            db.close()
-    else:
-        await message.reply("Добавление кампании отменено.")
-        await state.set_state(BaseState.default)
+    except Exception as e:
+        logger.error(f"Непредвиденная ошибка в confirm_campaign_creation: {e}", exc_info=True)
+        await message.reply("Произошла ошибка при создании кампании.")

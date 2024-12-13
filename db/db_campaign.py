@@ -1,30 +1,36 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+
+from logger import logger
 from db.models import Campaigns
 
-def create_campaign(db: Session, company_id: int, campaign_name: str, params: dict) -> Campaigns:
+def create_campaign(db: Session, company_id: int, campaign_name: str, start_date: str, end_date: str, params: dict) -> Campaigns:
     """
     Создает новую кампанию в базе данных.
-
-    :param db: Сессия базы данных.
-    :param company_id: ID компании, для которой создается кампания.
-    :param campaign_name: Название кампании.
-    :param params: Дополнительные параметры кампании в виде словаря.
-    :return: Созданная кампания.
     """
+    logger.debug(f"Создание кампании: company_id={company_id}, campaign_name={campaign_name}, start_date={start_date}, end_date={end_date}, params={params}")
+
     new_campaign = Campaigns(
         company_id=company_id,
         campaign_name=campaign_name,
+        start_date=start_date,
+        end_date=end_date,
         params=params
     )
     db.add(new_campaign)
     try:
         db.commit()
         db.refresh(new_campaign)
+        logger.info(f"Кампания успешно создана: id={new_campaign.campaign_id}, name={new_campaign.campaign_name}")
         return new_campaign
-    except IntegrityError:
+    except IntegrityError as e:
+        logger.error(f"Ошибка IntegrityError при создании кампании: {e}")
         db.rollback()
         raise ValueError("Ошибка при создании кампании. Возможно, такая кампания уже существует.")
+    except Exception as e:
+        logger.error(f"Ошибка при создании кампании: {e}", exc_info=True)
+        db.rollback()
+        raise
 
 def get_campaign_by_id(db: Session, campaign_id: int) -> Campaigns:
     """

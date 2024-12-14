@@ -105,7 +105,6 @@ class ContentPlan(Base):
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)  # Связь с Company
     telegram_id = Column(String, nullable=False)  # Telegram ID создателя
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    name = Column(String, nullable=False)  # Название контентного плана
     wave_count = Column(Integer, nullable=False, default=0)  # Количество волн
     description = Column(Text, nullable=True)  # Описание контентного плана
     campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"), nullable=False)  # Связь с Campaigns

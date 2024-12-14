@@ -1,14 +1,25 @@
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from logger import logger
 from db.models import Campaigns
 
+
 def create_campaign(db: Session, company_id: int, campaign_name: str, start_date: str, end_date: str, params: dict) -> Campaigns:
     """
     Создает новую кампанию в базе данных.
     """
     logger.debug(f"Создание кампании: company_id={company_id}, campaign_name={campaign_name}, start_date={start_date}, end_date={end_date}, params={params}")
+
+    # Преобразуем даты в формат YYYY-MM-DD
+    try:
+        start_date = datetime.strptime(start_date, "%d.%m.%Y").strftime("%Y-%m-%d")
+        end_date = datetime.strptime(end_date, "%d.%m.%Y").strftime("%Y-%m-%d")
+    except ValueError as e:
+        logger.error(f"Некорректный формат даты: {e}")
+        raise ValueError("Неверный формат даты. Используйте формат ДД.ММ.ГГГГ.")
 
     new_campaign = Campaigns(
         company_id=company_id,
@@ -31,6 +42,7 @@ def create_campaign(db: Session, company_id: int, campaign_name: str, start_date
         logger.error(f"Ошибка при создании кампании: {e}", exc_info=True)
         db.rollback()
         raise
+
 
 def get_campaign_by_id(db: Session, campaign_id: int) -> Campaigns:
     """

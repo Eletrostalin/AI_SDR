@@ -13,6 +13,9 @@ BASE_PROMPT = """
 - "Добавить новую кампанию": {{"action_type": "add", "entity_type": "campaign"}}
 - "Удалить шаблон": {{"action_type": "delete", "entity_type": "template"}}
 - "Хочу контент план на месяц": {{"action_type": "view", "entity_type": "content_plan"}}
+- "Создать контент план для кампании": {{"action_type": "add", "entity_type": "content_plan"}}
+- "Показать контент план для моего бизнеса": {{"action_type": "view", "entity_type": "content_plan"}}
+- "Удалить контент план": {{"action_type": "delete", "entity_type": "content_plan"}}
 - "Digital-агентство 'Атвинта' занимается дизайном..." или любой другой текст о компании: {{"action_type": "add", "entity_type": "company"}}
 - "Удалить компанию ExampleCorp": {{"action_type": "delete", "entity_type": "company"}}
 - "Удалить всю информацию о моей компании": {{"action_type": "delete", "entity_type": "company"}}

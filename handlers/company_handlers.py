@@ -8,9 +8,9 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy.orm import Session
 
 from classifier import extract_company_data, client
-from db.models import Campaigns, CompanyInfo
+from db.models import CompanyInfo
 from promts.company_promt import generate_edit_company_prompt
-from utils.states import AddCompanyState, BaseState, EditCompanyState
+from states.states import AddCompanyState, BaseState, EditCompanyState
 from logger import logger
 from db.db import SessionLocal
 from utils.utils import process_message

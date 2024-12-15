@@ -1,8 +1,9 @@
 from db.db import SessionLocal
-from handlers.campaign_delete_handler import handle_delete_campaign_request
-from handlers.campaign_view_handler import handle_view_campaigns
+from handlers.campaign_handlers.campaign_delete_handler import handle_delete_campaign_request
+from handlers.campaign_handlers.campaign_view_handler import handle_view_campaigns
 from handlers.company_handlers import handle_view_company, handle_edit_company, handle_delete_additional_info
-from handlers.campaign_handlers import handle_add_campaign
+from handlers.campaign_handlers.campaign_handlers import handle_add_campaign
+from handlers.content_plan_handlers import handle_add_content_plan
 from handlers.email_table_handler import handle_email_table_request, handle_view_email_table
 from logger import logger
 
@@ -70,6 +71,8 @@ async def dispatch_classification(classification: dict, message: Message, state:
                 await handle_email_table_request(message, state)
             elif action_type == "view" and entity_type == "email_table":
                 await handle_view_email_table(message, state)  # Новый обработчик
+            elif action_type == "add" and entity_type == "content_plan":
+                await handle_add_content_plan(message, state)  # Новый обработчик для content_plan
             else:
                 logger.warning(f"Не удалось обработать запрос: {classification}")
                 await message.reply("К сожалению, я не могу обработать ваш запрос. Попробуйте снова.")
@@ -77,6 +80,8 @@ async def dispatch_classification(classification: dict, message: Message, state:
             # Если тема не general
             if action_type == "delete" and entity_type == "campaign":
                 await handle_delete_campaign_request(message, state)
+            elif action_type == "add" and entity_type == "content_plan":
+                await handle_add_content_plan(message, state)  # Допустим, content_plan можно создавать в других темах
             else:
                 await message.reply(
                     "Эта операция доступна только в теме general. Пожалуйста, перейдите в основную тему и повторите запрос."

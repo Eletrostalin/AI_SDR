@@ -1,5 +1,4 @@
 from aiogram.filters import StateFilter
-from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
 from admin.ThreadManager import create_thread
@@ -7,11 +6,11 @@ from db.db_campaign import create_campaign
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
-from db.models import Campaigns, ChatThread
-from utils.states import AddCampaignState, BaseState
+from db.models import ChatThread
+from states.states import AddCampaignState, BaseState
 from classifier import extract_campaign_data_with_validation
 from aiogram import Router
-from aiogram.types import Message, FSInputFile
+from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
 from utils.utils import process_message

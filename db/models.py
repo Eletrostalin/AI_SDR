@@ -73,19 +73,21 @@ class Campaigns(Base):
 
     campaign_id = Column(Integer, primary_key=True, autoincrement=True)
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
+    thread_id = Column(BigInteger, ForeignKey("chat_threads.thread_id", ondelete="CASCADE"), nullable=False, unique=True)
     campaign_name = Column(String, nullable=False)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     status = Column(String, default="active", nullable=False)
-    status_for_user = Column(Boolean, default=True, nullable=False)  # Новая колонка
-    params = Column(JSON, nullable=True)  # Поле для хранения параметров
+    status_for_user = Column(Boolean, default=True, nullable=False)
+    params = Column(JSON, nullable=True)
 
     # Связи
     templates = relationship("Templates", back_populates="campaign")
     content_plans = relationship("ContentPlan", back_populates="campaign")
     waves = relationship("Waves", back_populates="campaign")
     company = relationship("Company", back_populates="campaigns")
+    chat_thread = relationship("ChatThread", backref="campaigns")
 
 
 class EmailTable(Base):

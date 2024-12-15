@@ -4,7 +4,7 @@ from config import OPENAI_API_KEY
 from promts.base_promt import BASE_PROMPT
 from promts.campaign_promt import CREATE_CAMPAIGN_PROMPT
 from promts.company_promt import PROCESS_COMPANY_INFORMATION_PROMPT
-from utils.states import AddCampaignState
+from states.states import AddCampaignState
 from logger import logger
 
 # Initialize the OpenAI client

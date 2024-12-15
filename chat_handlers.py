@@ -1,7 +1,7 @@
-from aiogram import Router, Bot
-from aiogram.exceptions import TelegramMigrateToChat
+from aiogram import Router
+from aiogram.exceptions import TelegramMigrateToChat, TelegramForbiddenError
 from aiogram.fsm.storage.base import StorageKey
-from aiogram.types import Message, ChatMemberUpdated, ContentType
+from aiogram.types import Message, ChatMemberUpdated, ContentType, ChatMemberLeft
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.orm import Session
 from aiogram.filters import Command
@@ -12,14 +12,11 @@ from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
 from db.models import Company
 from dispatcher import dispatch_classification
-from handlers.campaign_handlers import process_campaign_name, process_start_date, process_end_date, \
-    process_campaign_params, handle_full_campaign_data, confirm_campaign_creation
-from handlers.company_handlers import process_edit_company_information, confirm_edit_company_information
-from handlers.email_table_handler import handle_file_upload
-from handlers.onboarding_handler import handle_company_name, handle_industry, handle_region, handle_contact_email, \
-    handle_contact_phone, handle_additional_details, handle_confirmation
-from utils.states import OnboardingState, BaseState, EditCompanyState, AddCampaignState, AddEmailSegmentationState
+from states.states import OnboardingState, EditCompanyState, AddCampaignState, AddEmailSegmentationState
 import logging
+
+from states.states_handlers import handle_add_campaign_states, handle_edit_company_states, handle_onboarding_states, \
+    handle_add_email_segmentation_states, handle_add_content_plan_states
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -157,19 +154,22 @@ async def handle_message(message: Message, state: FSMContext):
     logger.debug(f"Получено сообщение: {message.text}. Текущее состояние: {current_state}")
 
     # Обработка системных сообщений
-    if message.content_type in {ContentType.NEW_CHAT_MEMBERS, ContentType.LEFT_CHAT_MEMBER}:
-        logger.debug("Обрабатываем системное сообщение (новые участники или выход).")
-        if message.content_type == ContentType.NEW_CHAT_MEMBERS:
-            for new_member in message.new_chat_members:
-                event = ChatMemberUpdated(
-                    chat=message.chat,
-                    from_user=message.from_user,
-                    new_chat_member=new_member,
-                    old_chat_member=message.from_user,
-                )
-                logger.debug(f"Обрабатываем добавление нового пользователя: {new_member.full_name}")
-                await greet_new_user(event, state)
-        logger.debug("Системное сообщение обработано. Пропускаем обработку.")
+    if message.content_type == ContentType.NEW_CHAT_MEMBERS:
+        logger.debug("Обрабатываем системное сообщение: добавлены новые участники.")
+        for new_member in message.new_chat_members:
+            logger.debug(f"Новый пользователь добавлен: id={new_member.id}, имя={new_member.full_name}")
+            # Обработка нового участника без создания `ChatMemberUpdated`
+            await greet_new_user(new_member, state)
+        return
+
+    if message.content_type == ContentType.LEFT_CHAT_MEMBER:
+        logger.debug("Обрабатываем системное сообщение: пользователь покинул чат.")
+        left_member = message.left_chat_member
+        logger.debug(f"Пользователь покинул чат: id={left_member.id}, имя={left_member.full_name}")
+        try:
+            await message.reply(f"Пользователь {left_member.full_name} покинул чат.")
+        except TelegramForbiddenError:
+            logger.error("Бот был удален или выгнан из чата и не может отправить сообщение.")
         return
 
     # Если состояние не установлено, классифицируем сообщение и устанавливаем базовое состояние
@@ -191,74 +191,11 @@ async def handle_message(message: Message, state: FSMContext):
         await handle_edit_company_states(message, state, current_state)
     elif current_state.startswith("AddCampaignState:"):
         await handle_add_campaign_states(message, state, current_state)
+    elif current_state.startswith("AddContentPlanState:"):  # Добавлена новая ветка
+        await handle_add_content_plan_states(message, state, current_state)
     elif current_state.startswith("AddEmailSegmentationState:"):
         await handle_add_email_segmentation_states(message, state, current_state)
     else:
         logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
         await message.reply("Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
 
-# Обработка состояний онбординга
-async def handle_onboarding_states(message: Message, state: FSMContext, current_state: str):
-    """
-    Обрабатывает состояния онбординга.
-    """
-    if current_state == OnboardingState.waiting_for_company_name.state:
-        await handle_company_name(message, state)
-    elif current_state == OnboardingState.waiting_for_industry.state:
-        await handle_industry(message, state)
-    elif current_state == OnboardingState.waiting_for_region.state:
-        await handle_region(message, state)
-    elif current_state == OnboardingState.waiting_for_contact_email.state:
-        await handle_contact_email(message, state)
-    elif current_state == OnboardingState.waiting_for_contact_phone.state:
-        await handle_contact_phone(message, state)
-    elif current_state == OnboardingState.waiting_for_additional_details.state:
-        await handle_additional_details(message, state)
-    elif current_state == OnboardingState.confirmation.state:
-        await handle_confirmation(message, state)
-
-async def handle_add_email_segmentation_states(message: Message, state: FSMContext, current_state: str):
-    """
-    Обрабатывает состояния добавления email-таблицы.
-    """
-    if current_state == AddEmailSegmentationState.waiting_for_file_upload.state:
-        await handle_file_upload(message, state)
-   # elif current_state == AddEmailSegmentationState.waiting_for_mapping_confirmation.state:
-        # await handle_mapping_confirmation(message, state)
-    else:
-        logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
-        await message.reply("Произошла ошибка. Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
-
-# Обработка состояний редактирования компании
-async def handle_edit_company_states(message: Message, state: FSMContext, current_state: str):
-    """
-    Обрабатывает состояния редактирования компании.
-    """
-    if current_state == EditCompanyState.waiting_for_updated_info.state:
-        await process_edit_company_information(message, state)
-    elif current_state == EditCompanyState.waiting_for_confirmation.state:
-        await confirm_edit_company_information(message, state)
-
-# Обработка состояний добавления кампании
-async def handle_add_campaign_states(message: Message, state: FSMContext, current_state: str):
-    """
-    Обрабатывает состояния добавления кампании.
-    """
-    if current_state == AddCampaignState.waiting_for_campaign_information.state:
-        # Обработка полного текста с информацией о кампании
-        await handle_full_campaign_data(message, state)
-    elif current_state == AddCampaignState.waiting_for_campaign_name.state:
-        # Обработка ввода названия кампании
-        await process_campaign_name(message, state)
-    elif current_state == AddCampaignState.waiting_for_start_date.state:
-        # Обработка ввода даты начала кампании
-        await process_start_date(message, state)
-    elif current_state == AddCampaignState.waiting_for_end_date.state:
-        # Обработка ввода даты окончания кампании
-        await process_end_date(message, state)
-    elif current_state == AddCampaignState.waiting_for_params.state:
-        # Обработка ввода дополнительных параметров кампании
-        await process_campaign_params(message, state)
-    elif current_state == AddCampaignState.waiting_for_confirmation.state:
-        # Обработка подтверждения данных кампании
-        await confirm_campaign_creation(message, state)

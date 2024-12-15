@@ -28,6 +28,12 @@ class AddCampaignState(StatesGroup):
     waiting_for_confirmation = State()  # Ожидание подтверждения данных кампании
     waiting_for_campaign_information = State()  # Ожидание полного описания кампании (альтернативный сценарий)
 
+class AddContentPlanState(StatesGroup):
+    waiting_for_description = State()
+    waiting_for_wave_count = State()
+    waiting_for_wave_details = State()
+    waiting_for_confirmation = State()
+
 class AddEmailSegmentationState(StatesGroup):
     """
     Состояния для добавления таблицы сегментации по email.

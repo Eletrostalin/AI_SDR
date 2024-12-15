@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy.orm import Session
 from db.db import SessionLocal
 from db.models import CompanyInfo
-from utils.states import OnboardingState
+from states.states import OnboardingState
 import logging
 
 logger = logging.getLogger(__name__)

@@ -5,7 +5,7 @@ from sqlalchemy.future import select
 
 from db.db import SessionLocal
 from db.models import Campaigns, Company
-from utils.states import DeleteCampaignState
+from states.states import DeleteCampaignState
 
 
 async def handle_delete_campaign_request(message: types.Message, state: FSMContext):

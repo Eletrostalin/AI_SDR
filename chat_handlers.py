@@ -6,7 +6,9 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy.orm import Session
 from aiogram.filters import Command
 
+
 from admin.ThreadManager import save_thread_to_db, create_new_thread
+from bot import bot
 from classifier import classify_message
 from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
@@ -75,68 +77,77 @@ async def initialize_topics(message: Message):
 
 
 @router.chat_member()
-async def greet_new_user(event: ChatMemberUpdated, state: FSMContext):
+async def greet_new_user(event: dict, state: FSMContext):
     """
     Обработчик добавления нового пользователя в чат.
     """
-    if event.new_chat_member.status == "member" and event.old_chat_member.status in {"left", "kicked"}:
-        telegram_user = event.new_chat_member.user
-        chat_id = event.chat.id
-        bot_id = event.bot.id  # Получаем ID бота
+    try:
+        new_chat_member = event["new_chat_member"]
+        old_chat_member = event["old_chat_member"]
 
-        logger.debug(f"Новый пользователь {telegram_user.full_name} добавлен в чат {chat_id}. Проверка в базе данных.")
-        db: Session = SessionLocal()
-        try:
-            # Проверяем существование компании
-            existing_company = db.query(Company).filter_by(chat_id=str(chat_id)).first()
+        # Проверка статусов
+        if new_chat_member["status"] == "member" and old_chat_member["status"] in {"left", "kicked"}:
+            telegram_user = new_chat_member["user"]
+            chat_id = event["chat"].id
+            bot = event["bot"]
+            bot_id = bot.id
 
-            # Создаём или получаем компанию и пользователя
-            user = create_or_get_company_and_user(db, telegram_user, chat_id)
+            # Проверяем, чтобы добавленный пользователь не был ботом
+            if telegram_user.id == bot_id:
+                logger.debug("Бот добавлен в чат. Пропускаем обработку.")
+                return  # Игнорируем добавление самого бота
 
-            if not existing_company:
-                # Если компания не существовала, это первый пользователь компании
-                logger.debug(
-                    f"Компания для чата {chat_id} не найдена. Устанавливаем онбординг для {telegram_user.full_name}.")
+            logger.debug(f"Новый пользователь {telegram_user.full_name} добавлен в чат {chat_id}. Проверка в базе данных.")
+            db: Session = SessionLocal()
+            try:
+                # Проверяем существование компании
+                existing_company = db.query(Company).filter_by(chat_id=str(chat_id)).first()
 
-                # Привязка состояния к добавленному пользователю
-                await state.storage.set_state(
-                    key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
-                    state=OnboardingState.waiting_for_company_name
-                )
-                await state.storage.set_data(
-                    key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
-                    data={"company_id": user.company_id}
-                )
+                # Создаём или получаем компанию и пользователя
+                user = create_or_get_company_and_user(db, telegram_user, chat_id)
 
-                # Проверяем состояние для пользователя
-                current_state = await state.storage.get_state(
-                    key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id)
-                )
-                logger.debug(f"Состояние для {telegram_user.full_name}: {current_state}")
-
-                # Отправляем сообщение о начале онбординга в общий чат
-                await event.bot.send_message(
-                    chat_id=chat_id,  # Сообщение отправляется в общий чат
-                    text=(
-                        f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
-                        "Давайте начнем с базовой информации.\nВведите название вашей компании."
+                if not existing_company:
+                    # Если компания не существовала, это первый пользователь компании
+                    logger.debug(
+                        f"Компания для чата {chat_id} не найдена. Устанавливаем онбординг для {telegram_user.full_name}."
                     )
-                )
-            else:
-                # Приветственное сообщение для последующих пользователей
-                logger.debug(
-                    f"Компания для чата {chat_id} уже существует. Пользователь {telegram_user.full_name} добавлен.")
-                await event.bot.send_message(
-                    chat_id=chat_id,
-                    text=(
-                        f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
-                        "Вы добавлены к текущей компании. Напишите 'Помощь', чтобы узнать, что я могу делать."
+
+                    # Привязка состояния к добавленному пользователю
+                    await state.storage.set_state(
+                        key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
+                        state=OnboardingState.waiting_for_company_name
                     )
-                )
-        except Exception as e:
-            logger.error(f"Ошибка обработки нового пользователя: {e}", exc_info=True)
-        finally:
-            db.close()
+                    await state.storage.set_data(
+                        key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
+                        data={"company_id": user.company_id}
+                    )
+
+                    # Отправляем сообщение о начале онбординга в общий чат
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=(
+                            f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
+                            "Давайте начнем с базовой информации.\nВведите название вашей компании."
+                        )
+                    )
+                else:
+                    # Приветственное сообщение для последующих пользователей
+                    logger.debug(
+                        f"Компания для чата {chat_id} уже существует. Пользователь {telegram_user.full_name} добавлен."
+                    )
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=(
+                            f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
+                            "Вы добавлены к текущей компании. Напишите 'Помощь', чтобы узнать, что я могу делать."
+                        )
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка обработки нового пользователя: {e}", exc_info=True)
+            finally:
+                db.close()
+    except KeyError as e:
+        logger.error(f"Ошибка в структуре события: {e}", exc_info=True)
 
 @router.message()
 async def handle_message(message: Message, state: FSMContext):
@@ -147,29 +158,34 @@ async def handle_message(message: Message, state: FSMContext):
     """
     # Проверяем, является ли отправитель ботом
     if message.from_user and message.from_user.is_bot:
-        # Игнорируем сообщения от бота
-        return
+        return  # Игнорируем сообщения от бота
 
     current_state = await state.get_state()
     logger.debug(f"Получено сообщение: {message.text}. Текущее состояние: {current_state}")
 
     # Обработка системных сообщений
-    if message.content_type == ContentType.NEW_CHAT_MEMBERS:
-        logger.debug("Обрабатываем системное сообщение: добавлены новые участники.")
-        for new_member in message.new_chat_members:
-            logger.debug(f"Новый пользователь добавлен: id={new_member.id}, имя={new_member.full_name}")
-            # Обработка нового участника без создания `ChatMemberUpdated`
-            await greet_new_user(new_member, state)
-        return
-
-    if message.content_type == ContentType.LEFT_CHAT_MEMBER:
-        logger.debug("Обрабатываем системное сообщение: пользователь покинул чат.")
-        left_member = message.left_chat_member
-        logger.debug(f"Пользователь покинул чат: id={left_member.id}, имя={left_member.full_name}")
-        try:
-            await message.reply(f"Пользователь {left_member.full_name} покинул чат.")
-        except TelegramForbiddenError:
-            logger.error("Бот был удален или выгнан из чата и не может отправить сообщение.")
+    if message.content_type in {ContentType.NEW_CHAT_MEMBERS, ContentType.LEFT_CHAT_MEMBER}:
+        logger.debug("Обрабатываем системное сообщение (новые участники или выход).")
+        if message.content_type == ContentType.NEW_CHAT_MEMBERS:
+            for new_member in message.new_chat_members:
+                event_data = {
+                    "chat": message.chat,
+                    "from_user": message.from_user,
+                    "new_chat_member": {
+                        "user": new_member,
+                        "status": "member",  # Симулируем статус
+                    },
+                    "old_chat_member": {
+                        "user": message.from_user,
+                        "status": "left",  # Симулируем предыдущее состояние
+                    },
+                    "bot": message.bot,
+                }
+                logger.debug(f"Обрабатываем добавление нового пользователя: {new_member.full_name}")
+                await greet_new_user(event_data, state)
+        elif message.content_type == ContentType.LEFT_CHAT_MEMBER:
+            logger.debug(f"Пользователь покинул чат: {message.left_chat_member.full_name}")
+        logger.debug("Системное сообщение обработано. Пропускаем обработку.")
         return
 
     # Если состояние не установлено, классифицируем сообщение и устанавливаем базовое состояние

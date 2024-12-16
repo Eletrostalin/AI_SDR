@@ -61,7 +61,7 @@ async def process_campaign_name(message: Message, state: FSMContext):
         # Если это только название кампании
         logger.debug("Сохранение названия кампании и запрос даты начала.")
         await state.update_data(campaign_name=campaign_name)
-        await message.reply("Введите дату начала кампании (в формате ГГГГ-ММ-ДД):")
+        await message.reply("Введите дату начала кампании (в формате ДД.ММ.ГГГГ):")
         await state.set_state(AddCampaignState.waiting_for_start_date)
     else:
         logger.warning("Получено пустое название кампании.")
@@ -108,11 +108,11 @@ async def handle_full_campaign_data(campaign_data: dict, state: FSMContext, mess
             logger.debug("handle_full_campaign_data: Состояние установлено на waiting_for_campaign_name.")
         elif "start_date" in missing_fields:
             await state.set_state(AddCampaignState.waiting_for_start_date)
-            await message.reply("Дата начала кампании отсутствует. Укажите ее в формате ГГГГ-ММ-ДД:")
+            await message.reply("Дата начала кампании отсутствует. Укажите ее в формате ДД.ММ.ГГГГ:")
             logger.debug("handle_full_campaign_data: Состояние установлено на waiting_for_start_date.")
         elif "end_date" in missing_fields:
             await state.set_state(AddCampaignState.waiting_for_end_date)
-            await message.reply("Дата окончания кампании отсутствует. Укажите ее в формате ГГГГ-ММ-ДД:")
+            await message.reply("Дата окончания кампании отсутствует. Укажите ее в формате ДД.ММ.ГГГГ:")
             logger.debug("handle_full_campaign_data: Состояние установлено на waiting_for_end_date.")
 
 
@@ -165,15 +165,24 @@ async def process_end_date(message: Message, state: FSMContext):
 
         logger.debug(f"Дата окончания кампании обновлена: {end_date}")
 
-        # Переключаем состояние на ожидание подтверждения
-        await message.reply(
+        # Генерация подтверждающего сообщения
+        confirmation_message = (
             "Все данные собраны. Проверьте информацию:\n"
             f"Название: {campaign_data.get('campaign_name', 'Не указано')}\n"
             f"Дата начала: {campaign_data.get('start_date', 'Не указано')}\n"
             f"Дата окончания: {campaign_data.get('end_date', 'Не указано')}\n"
-            f"Параметры: {campaign_data.get('params', {})}\n"
-            "Все верно? (да/нет)"
         )
+
+        # Проверяем наличие параметров
+        params = campaign_data.get('params', {})
+        if params:
+            params_str = "\n".join([f"{k}: {v}" for k, v in params.items()])
+            confirmation_message += f"Параметры:\n{params_str}\n"
+
+        confirmation_message += "Все верно? (да/нет)"
+
+        # Переключаем состояние на ожидание подтверждения
+        await message.reply(confirmation_message)
         await state.set_state(AddCampaignState.waiting_for_confirmation)
 
     except ValueError:
@@ -269,6 +278,19 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
 
                 logger.debug(f"Компания найдена: company_id={company.company_id}, name={company.name}")
 
+                # Создаем тему в чате
+                bot = message.bot
+                thread_name = f"Кампания: {campaign_name}"
+                created_thread_id = await create_thread(bot, chat_id, thread_name)
+
+                if not created_thread_id:
+                    logger.warning(f"Тема для кампании '{campaign_name}' не была добавлена в чат.")
+                    await message.reply(f"Кампания '{campaign_name}' успешно создана, но тема не была добавлена в чат.")
+                    await state.set_state(BaseState.default)
+                    return
+
+                logger.debug(f"Тема создана: thread_id={created_thread_id}, thread_name={thread_name}")
+
                 # Создаем новую кампанию
                 new_campaign = create_campaign(
                     db=db,
@@ -276,34 +298,25 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
                     campaign_name=campaign_name,
                     start_date=start_date,
                     end_date=end_date,
-                    params=params
+                    params=params,
+                    thread_id=created_thread_id  # Передаем идентификатор темы
                 )
                 logger.info(f"Кампания создана: id={new_campaign.campaign_id}, name={new_campaign.campaign_name}")
 
-                # Создаем тему в чате
-                bot = message.bot
-                thread_name = f"Кампания: {campaign_name}"
-                created_thread_id = await create_thread(bot, chat_id, thread_name)
+                # Сохраняем данные темы в базе
+                new_thread = ChatThread(
+                    chat_id=chat_id,
+                    thread_id=created_thread_id,
+                    thread_name=thread_name,
+                )
+                db.add(new_thread)
+                db.commit()
 
-                if created_thread_id:
-                    logger.debug(f"Тема создана: thread_id={created_thread_id}, thread_name={thread_name}")
-                    new_thread = ChatThread(
-                        chat_id=chat_id,
-                        thread_id=created_thread_id,
-                        thread_name=thread_name,
-                    )
-                    db.add(new_thread)
-                    db.commit()
-                    await message.reply(
-                        f"Кампания '{campaign_name}' успешно создана, и тема '{thread_name}' добавлена в чат!"
-                    )
-                    await state.set_state(BaseState.default)
-                else:
-                    logger.warning(f"Тема для кампании '{campaign_name}' не была добавлена в чат.")
-                    await message.reply(f"Кампания '{campaign_name}' успешно создана, но тема не была добавлена в чат.")
-
-                # Сбрасываем состояние
+                await message.reply(
+                    f"Кампания '{campaign_name}' успешно создана, и тема '{thread_name}' добавлена в чат!"
+                )
                 await state.set_state(BaseState.default)
+
             except ValueError as ve:
                 logger.error(f"Ошибка при создании кампании: {ve}")
                 await message.reply(str(ve))

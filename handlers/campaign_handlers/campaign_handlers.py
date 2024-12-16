@@ -3,6 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from admin.ThreadManager import create_thread
 from db.db_campaign import create_campaign
+from db.db_thread import save_campaign_to_db, save_thread_to_db
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
@@ -245,31 +246,36 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
             # Получаем данные из состояния
             state_data = await state.get_data()
             campaign_data = state_data.get("campaign_data", {})
-            logger.debug(f"Данные кампании для подтверждения: {campaign_data}")
 
             if not campaign_data:
-                logger.error("Данные кампании отсутствуют. Подтверждение невозможно.")
+                logger.error("Данные кампании отсутствуют.")
                 await message.reply("Ошибка: данные кампании не найдены. Попробуйте создать кампанию заново.")
                 await state.set_state(AddCampaignState.waiting_for_campaign_name)
                 return
 
-            # Извлекаем параметры для создания кампании
             campaign_name = campaign_data.get("campaign_name")
-            start_date = campaign_data.get("start_date")
-            end_date = campaign_data.get("end_date")
-            params = campaign_data.get("params", {})
+            chat_id = str(message.chat.id)
+            bot = message.bot
 
-            # Проверяем обязательные поля
-            if not campaign_name or not start_date or not end_date:
-                logger.error("Некоторые обязательные поля отсутствуют при подтверждении кампании.")
-                await message.reply("Некоторые обязательные данные отсутствуют. Пожалуйста, начните процесс заново.")
-                await state.set_state(AddCampaignState.waiting_for_campaign_name)
+            # Создаем тему в чате
+            thread_name = f"Кампания: {campaign_name}"
+            created_thread_id = await create_thread(bot, chat_id, thread_name)
+
+            if not created_thread_id:
+                logger.warning(f"Тема для кампании '{campaign_name}' не была добавлена в чат.")
+                await message.reply(f"Кампания '{campaign_name}' успешно создана, но тема не была добавлена в чат.")
+                await state.set_state(BaseState.default)
                 return
 
+            logger.debug(f"Тема создана: thread_id={created_thread_id}, thread_name={thread_name}")
+
+            # Добавляем тему и кампанию в базу данных
             db = SessionLocal()
             try:
+                # Сохраняем тему в базу данных
+                save_thread_to_db(db, chat_id, created_thread_id, thread_name)
+
                 # Получаем компанию по chat_id
-                chat_id = str(message.chat.id)
                 company = get_company_by_chat_id(db, chat_id)
                 if not company:
                     logger.error(f"Компания не найдена для chat_id: {chat_id}")
@@ -278,54 +284,22 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
 
                 logger.debug(f"Компания найдена: company_id={company.company_id}, name={company.name}")
 
-                # Создаем тему в чате
-                bot = message.bot
-                thread_name = f"Кампания: {campaign_name}"
-                created_thread_id = await create_thread(bot, chat_id, thread_name)
-
-                if not created_thread_id:
-                    logger.warning(f"Тема для кампании '{campaign_name}' не была добавлена в чат.")
-                    await message.reply(f"Кампания '{campaign_name}' успешно создана, но тема не была добавлена в чат.")
-                    await state.set_state(BaseState.default)
-                    return
-
-                logger.debug(f"Тема создана: thread_id={created_thread_id}, thread_name={thread_name}")
-
-                # Создаем новую кампанию
-                new_campaign = create_campaign(
-                    db=db,
-                    company_id=company.company_id,
-                    campaign_name=campaign_name,
-                    start_date=start_date,
-                    end_date=end_date,
-                    params=params,
-                    thread_id=created_thread_id  # Передаем идентификатор темы
-                )
-                logger.info(f"Кампания создана: id={new_campaign.campaign_id}, name={new_campaign.campaign_name}")
-
-                # Сохраняем данные темы в базе
-                new_thread = ChatThread(
-                    chat_id=chat_id,
-                    thread_id=created_thread_id,
-                    thread_name=thread_name,
-                )
-                db.add(new_thread)
-                db.commit()
+                # Сохраняем кампанию в базу данных
+                campaign_data["thread_id"] = created_thread_id
+                print(campaign_data)
+                new_campaign = save_campaign_to_db(db, company.company_id, campaign_data)
 
                 await message.reply(
-                    f"Кампания '{campaign_name}' успешно создана, и тема '{thread_name}' добавлена в чат!"
+                    f"Кампания '{new_campaign.campaign_name}' успешно создана, и тема '{thread_name}' добавлена в чат!"
                 )
-                await state.set_state(BaseState.default)
+                await state.clear()
 
             except ValueError as ve:
-                logger.error(f"Ошибка при создании кампании: {ve}")
+                logger.error(f"Ошибка при сохранении данных в БД: {ve}")
                 await message.reply(str(ve))
-            except SQLAlchemyError as e:
-                logger.error(f"Ошибка SQLAlchemy при создании кампании: {e}")
-                await message.reply("Произошла ошибка при добавлении кампании.")
-                db.rollback()
             finally:
                 db.close()
+
         except Exception as e:
             logger.error(f"Непредвиденная ошибка в confirm_campaign_creation: {e}", exc_info=True)
             await message.reply("Произошла ошибка при создании кампании.")

@@ -104,7 +104,9 @@ async def extract_campaign_data_with_validation(input_text: str, state, message)
         # Извлекаем и парсим ответ
         content = response.choices[0].message.content
         logger.debug(f"Campaign data response: {content}")
+        print(content)
         campaign_data = json.loads(content.strip())
+        print(campaign_data)
 
         # Проверяем, извлеклось ли campaign_name
         campaign_name = campaign_data.get("campaign_name")

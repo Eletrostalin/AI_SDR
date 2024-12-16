@@ -7,11 +7,12 @@ from sqlalchemy.orm import Session
 from aiogram.filters import Command
 
 
-from admin.ThreadManager import save_thread_to_db, create_new_thread
+from admin.ThreadManager import create_new_thread
 from bot import bot
 from classifier import classify_message
 from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
+from db.db_thread import save_thread_to_db
 from db.models import Company
 from dispatcher import dispatch_classification
 from states.states import OnboardingState, EditCompanyState, AddCampaignState, AddEmailSegmentationState

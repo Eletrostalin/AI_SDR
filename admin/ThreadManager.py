@@ -41,25 +41,3 @@ async def create_thread(bot, chat_id, thread_name):
     except Exception as e:
         logger.error(f"Ошибка при создании темы '{thread_name}' в чате {chat_id}: {e}", exc_info=True)
         return None
-
-
-def save_thread_to_db(db: Session, chat_id: int, thread_id: int, thread_name: str):
-    """
-    Сохраняет информацию о теме в базу данных.
-    """
-    logger.debug(f"Попытка сохранения темы в базу данных: chat_id={chat_id}, thread_id={thread_id}, thread_name='{thread_name}'")
-    try:
-        thread_exists = db.query(ChatThread).filter_by(chat_id=chat_id, thread_id=thread_id).first()
-        if thread_exists:
-            logger.info(f"Тема с thread_id={thread_id} в чате {chat_id} уже существует.")
-            return
-        new_thread = ChatThread(
-            chat_id=chat_id,
-            thread_id=thread_id,
-            thread_name=thread_name
-        )
-        db.add(new_thread)
-        db.commit()
-        logger.info(f"Тема '{thread_name}' сохранена в базу данных: chat_id={chat_id}, thread_id={thread_id}")
-    except Exception as e:
-        logger.error(f"Ошибка сохранения темы '{thread_name}' в базу данных: {e}", exc_info=True)

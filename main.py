@@ -1,15 +1,17 @@
 import asyncio
-
 from aiogram import Dispatcher
+
 from aiogram.fsm.storage.memory import MemoryStorage
 from logger import logger
 from chat_handlers import router as chat_router
 from handlers.company_handlers import router as company_router
-from handlers.campaign_handlers.campaign_handlers import router as campaign_router  # Добавляем маршрутизатор кампаний
-from handlers.campaign_handlers.campaign_delete_handler import handle_campaign_selection, \
-    handle_campaign_deletion_confirmation  # Импортируем обработчик выбора кампании
-from aiogram.filters import StateFilter  # Импорт фильтра для состояния
-from states.states import DeleteCampaignState  # Импорт состояния удаления кампании
+from handlers.campaign_handlers.campaign_handlers import router as campaign_router  # Маршрутизатор кампаний
+from handlers.campaign_handlers.campaign_delete_handler import (
+    handle_delete_campaign_request,
+    handle_campaign_deletion_callback,  # Обработчик инлайн-кнопок для удаления кампаний
+)
+from aiogram.filters import Command
+from aiogram.types import CallbackQuery  # Для обработки инлайн-кнопок
 from bot import bot
 from config import TELEGRAM_TOKEN, TARGET_CHAT_ID
 
@@ -17,8 +19,6 @@ from config import TELEGRAM_TOKEN, TARGET_CHAT_ID
 async def main():
     # Логирование начала работы бота
     logger.info("Запуск бота...")
-
-
 
     dp = Dispatcher(storage=MemoryStorage())
 
@@ -31,7 +31,8 @@ async def main():
     await dp.start_polling(bot)
     logger.info("Бот начал опрос сообщений.")
 
-def setup_routers(dp):
+
+def setup_routers(dp: Dispatcher):
     """
     Настраивает маршрутизаторы, подключая обработчики для чата с пользователями
     и для команд администратора.
@@ -40,16 +41,16 @@ def setup_routers(dp):
     dp.include_router(company_router)
     dp.include_router(campaign_router)
 
-    # Регистрация обработчика для выбора кампании
+    # Регистрация команды для удаления кампании
     dp.message.register(
-        handle_campaign_selection,
-        StateFilter(DeleteCampaignState.waiting_for_campaign_selection),
+        handle_delete_campaign_request,
+        Command("delete_campaign")  # Используем Command фильтр
     )
 
-    # Регистрация обработчика для подтверждения удаления кампании
-    dp.message.register(
-        handle_campaign_deletion_confirmation,
-        StateFilter(DeleteCampaignState.waiting_for_campaign_confirmation),
+    # Регистрация обработчика инлайн-кнопок для удаления кампаний
+    dp.callback_query.register(
+        handle_campaign_deletion_callback,
+        lambda callback: callback.data.startswith("delete_campaign:")
     )
 
 

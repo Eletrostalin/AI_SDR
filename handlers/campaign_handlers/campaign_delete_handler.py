@@ -1,6 +1,6 @@
 from aiogram import types
 from aiogram.fsm.context import FSMContext
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from sqlalchemy.future import select
 
 from db.db import SessionLocal
@@ -38,80 +38,52 @@ async def handle_delete_campaign_request(message: types.Message, state: FSMConte
             await message.reply("У вас нет активных кампаний для удаления.")
             return
 
-        # Создаем кнопки с названиями кампаний
-        buttons = [[KeyboardButton(text=campaign.campaign_name)] for campaign in campaigns]
-        keyboard = ReplyKeyboardMarkup(
-            keyboard=buttons,
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
+        # Генерируем инлайн-кнопки для кампаний
+        buttons = [
+            InlineKeyboardButton(
+                text=campaign.campaign_name,
+                callback_data=f"delete_campaign:{campaign.campaign_id}"
+            ) for campaign in campaigns
+        ]
+
+        if not buttons:
+            await message.reply("У вас нет доступных кампаний для удаления.")
+            return
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
 
         await message.reply("Выберите кампанию, которую хотите удалить:", reply_markup=keyboard)
         await state.update_data(company_id=company_id)
-        await state.set_state(DeleteCampaignState.waiting_for_campaign_selection)
 
     finally:
         db.close()
 
 
-async def handle_campaign_selection(message: types.Message, state: FSMContext):
+async def handle_campaign_deletion_callback(callback_query: types.CallbackQuery, state: FSMContext):
     """
-    Обрабатывает выбор кампании для удаления.
+    Обрабатывает инлайн-кнопку для удаления кампании.
     """
-    campaign_name = message.text
-
-    # Получаем company_id из состояния
-    data = await state.get_data()
-    company_id = data.get("company_id")
     db = SessionLocal()
 
     try:
-        # Ищем кампанию по названию и company_id
+        # Извлекаем ID кампании из callback_data
+        callback_data = callback_query.data
+        if not callback_data.startswith("delete_campaign:"):
+            await callback_query.answer("Неверные данные. Попробуйте снова.")
+            return
+
+        campaign_id = int(callback_data.split(":")[1])
+
+        # Проверяем, существует ли кампания
         query = select(Campaigns).where(
-            Campaigns.company_id == company_id,
-            Campaigns.campaign_name == campaign_name,
+            Campaigns.campaign_id == campaign_id,
             Campaigns.status_for_user == True
         )
         result = db.execute(query)
         campaign = result.scalar_one_or_none()
 
         if not campaign:
-            await message.reply("Кампания с таким названием не найдена. Пожалуйста, выберите из предложенного списка.")
-            return
-
-        # Сохраняем ID кампании в состоянии
-        await state.update_data(campaign_id=campaign.campaign_id)
-
-        await message.reply(f"Вы уверены, что хотите удалить кампанию '{campaign_name}'? Напишите 'Да' для подтверждения.")
-        await state.set_state(DeleteCampaignState.waiting_for_campaign_confirmation)
-
-    finally:
-        db.close()
-
-
-async def handle_campaign_deletion_confirmation(message: types.Message, state: FSMContext):
-    """
-    Подтверждает удаление кампании и изменяет её статус.
-    """
-    if message.text.lower() != "да":
-        await message.reply("Удаление кампании отменено.")
-        await state.clear()
-        return
-
-    # Получаем ID кампании из состояния
-    data = await state.get_data()
-    campaign_id = data.get("campaign_id")
-    db = SessionLocal()
-
-    try:
-        # Ищем кампанию по ID
-        query = select(Campaigns).where(Campaigns.campaign_id == campaign_id)
-        result = db.execute(query)
-        campaign = result.scalar_one_or_none()
-
-        if not campaign:
-            await message.reply("Произошла ошибка. Кампания не найдена.")
-            await state.clear()
+            await callback_query.answer("Кампания не найдена или уже удалена.", show_alert=True)
             return
 
         # Обновляем статус кампании
@@ -119,8 +91,8 @@ async def handle_campaign_deletion_confirmation(message: types.Message, state: F
         db.add(campaign)
         db.commit()
 
-        await message.reply(f"Кампания '{campaign.campaign_name}' успешно удалена.")
-        await state.clear()
+        await callback_query.message.reply(f"Кампания '{campaign.campaign_name}' успешно удалена.")
+        await callback_query.answer("Кампания удалена.", show_alert=True)
 
     finally:
         db.close()

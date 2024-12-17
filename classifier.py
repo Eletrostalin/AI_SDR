@@ -88,7 +88,7 @@ def extract_company_data(company_text: str) -> dict:
 
 async def extract_campaign_data_with_validation(input_text: str, state, message):
     """
-    Извлекает данные о кампании из текста, используя OpenAI, с обязательной проверкой на наличие campaign_name.
+    Извлекает данные о кампании из текста, используя OpenAI, с сохранением частичных данных.
     """
     try:
         # Форматируем промпт
@@ -104,19 +104,19 @@ async def extract_campaign_data_with_validation(input_text: str, state, message)
         # Извлекаем и парсим ответ
         content = response.choices[0].message.content
         logger.debug(f"Campaign data response: {content}")
-        print(content)
         campaign_data = json.loads(content.strip())
-        print(campaign_data)
 
-        # Проверяем, извлеклось ли campaign_name
+        # Проверяем данные
         campaign_name = campaign_data.get("campaign_name")
         if not campaign_name or campaign_name.strip() == "":
-            # Если название не извлечено, запрашиваем его у пользователя
-            await message.reply("Не удалось определить название кампании. Пожалуйста, укажите его.")
+            # Если название не извлечено, сохраняем частичные данные и запрашиваем название
+            logger.warning("Название кампании отсутствует. Запрашиваем у пользователя.")
+            await state.update_data(partial_campaign_data=campaign_data)
+            await message.reply("Не удалось определить название кампании. Укажите его.")
             await state.set_state(AddCampaignState.waiting_for_campaign_name)
             return None
 
-        # Возвращаем извлеченные данные
+        # Возвращаем полные данные
         return campaign_data
 
     except json.JSONDecodeError as json_error:

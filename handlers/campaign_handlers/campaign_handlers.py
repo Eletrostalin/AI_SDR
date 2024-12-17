@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from admin.ThreadManager import create_thread
 from db.db_campaign import create_campaign
 from db.db_thread import save_campaign_to_db, save_thread_to_db
+from handlers.content_plan_handlers import handle_add_content_plan
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
@@ -54,6 +55,13 @@ async def process_campaign_name(message: Message, state: FSMContext):
                     logger.debug("Полные данные кампании успешно извлечены. Передача в обработчик.")
                     await handle_full_campaign_data(campaign_data, state, message)
                     return
+                else:
+                    # Проверяем, если были частичные данные
+                    partial_data = await state.get_data()
+                    if partial_data.get("partial_campaign_data"):
+                        logger.debug("Обнаружены частичные данные кампании.")
+                        return
+
         except Exception as e:
             logger.error(f"Ошибка при обработке текста кампании: {e}")
             await message.reply(f"Произошла ошибка при обработке данных кампании: {e}")
@@ -69,7 +77,6 @@ async def process_campaign_name(message: Message, state: FSMContext):
         await message.reply("Название кампании не может быть пустым. Укажите название ещё раз.")
 
 
-# Обработка данных кампании, если переданы сразу
 async def handle_full_campaign_data(campaign_data: dict, state: FSMContext, message: Message):
     """
     Обрабатывает полный JSON с данными кампании.
@@ -77,20 +84,23 @@ async def handle_full_campaign_data(campaign_data: dict, state: FSMContext, mess
     logger.debug("handle_full_campaign_data: Начало обработки данных кампании.")
     logger.debug(f"handle_full_campaign_data: Полученные данные кампании: {campaign_data}")
 
+    # Обязательные поля
     required_fields = ["campaign_name", "start_date", "end_date"]
+    # Проверяем, какие поля отсутствуют
     missing_fields = [field for field in required_fields if not campaign_data.get(field)]
     logger.debug(f"handle_full_campaign_data: Отсутствующие поля: {missing_fields}" if missing_fields else "handle_full_campaign_data: Все обязательные поля присутствуют.")
 
     if not missing_fields:
+        # Все данные есть, сохраняем и запрашиваем подтверждение
         logger.info("handle_full_campaign_data: Все данные кампании собраны. Сохраняем состояние и запрашиваем подтверждение.")
         await state.update_data(campaign_data=campaign_data)
         logger.debug(f"handle_full_campaign_data: Данные кампании успешно сохранены в состояние: {await state.get_data()}")
 
-        # Переключаем состояние на подтверждение
+        # Устанавливаем состояние для подтверждения
         await state.set_state(AddCampaignState.waiting_for_confirmation)
         logger.debug("handle_full_campaign_data: Состояние установлено на waiting_for_confirmation.")
 
-        # Запрашиваем подтверждение у пользователя
+        # Отправляем пользователю запрос на подтверждение
         await message.reply(
             f"Пожалуйста, подтвердите создание кампании:\n\n"
             f"Название: {campaign_data['campaign_name']}\n"
@@ -100,9 +110,11 @@ async def handle_full_campaign_data(campaign_data: dict, state: FSMContext, mess
             f"Введите 'да' для подтверждения или 'нет' для отмены."
         )
     else:
+        # Если данных не хватает, сохраняем частично и запрашиваем недостающие
         logger.warning(f"handle_full_campaign_data: Данные кампании неполные. Пользователю нужно дополнить: {missing_fields}")
         await state.update_data(campaign_data=campaign_data)
 
+        # Последовательно проверяем и запрашиваем недостающие данные
         if "campaign_name" in missing_fields:
             await state.set_state(AddCampaignState.waiting_for_campaign_name)
             await message.reply("Название кампании отсутствует. Укажите его:")
@@ -237,10 +249,11 @@ async def process_campaign_params(message: Message, state: FSMContext):
 @router.message(StateFilter(AddCampaignState.waiting_for_confirmation))
 async def confirm_campaign_creation(message: Message, state: FSMContext):
     """
-    Подтверждает добавление кампании в базу данных и создает тему в чате.
+    Подтверждает добавление кампании в базу данных, создает тему в чате и инициирует создание контентного плана.
     """
     logger.debug(f"Подтверждение кампании. Сообщение: {message.text}. Текущее состояние: {await state.get_state()}")
 
+    db = None
     if message.text.lower() in ["да", "верно"]:
         try:
             # Получаем данные из состояния
@@ -254,10 +267,28 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
                 return
 
             campaign_name = campaign_data.get("campaign_name")
-            chat_id = str(message.chat.id)
-            bot = message.bot
+            start_date = campaign_data.get("start_date")
+            end_date = campaign_data.get("end_date")
+            params = campaign_data.get("params", {})
 
-            # Создаем тему в чате
+            if not campaign_name or not start_date or not end_date:
+                logger.error("Некоторые обязательные поля отсутствуют.")
+                await message.reply("Некоторые обязательные данные отсутствуют. Пожалуйста, начните процесс заново.")
+                await state.set_state(AddCampaignState.waiting_for_campaign_name)
+                return
+
+            db = SessionLocal()
+            chat_id = str(message.chat.id)
+
+            # Получаем компанию
+            company = get_company_by_chat_id(db, chat_id)
+            if not company:
+                logger.error(f"Компания не найдена для chat_id: {chat_id}")
+                await message.reply("Ошибка: Компания не найдена.")
+                return
+
+            # Создаем тему
+            bot = message.bot
             thread_name = f"Кампания: {campaign_name}"
             created_thread_id = await create_thread(bot, chat_id, thread_name)
 
@@ -267,42 +298,29 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
                 await state.set_state(BaseState.default)
                 return
 
-            logger.debug(f"Тема создана: thread_id={created_thread_id}, thread_name={thread_name}")
+            # Сохраняем тему и кампанию
+            save_thread_to_db(db, chat_id, created_thread_id, thread_name)
+            campaign_data["thread_id"] = created_thread_id
+            new_campaign = save_campaign_to_db(db, company.company_id, campaign_data)
 
-            # Добавляем тему и кампанию в базу данных
-            db = SessionLocal()
-            try:
-                # Сохраняем тему в базу данных
-                save_thread_to_db(db, chat_id, created_thread_id, thread_name)
+            logger.info(f"Кампания создана: id={new_campaign.campaign_id}, name={new_campaign.campaign_name}")
+            await message.reply(
+                f"Кампания '{new_campaign.campaign_name}' успешно создана, и тема '{thread_name}' добавлена в чат!"
+            )
 
-                # Получаем компанию по chat_id
-                company = get_company_by_chat_id(db, chat_id)
-                if not company:
-                    logger.error(f"Компания не найдена для chat_id: {chat_id}")
-                    await message.reply("Ошибка: Компания не найдена.")
-                    return
+            # Сохраняем идентификатор кампании для создания контентного плана
+            await state.update_data(campaign_id=new_campaign.campaign_id)
 
-                logger.debug(f"Компания найдена: company_id={company.company_id}, name={company.name}")
-
-                # Сохраняем кампанию в базу данных
-                campaign_data["thread_id"] = created_thread_id
-                print(campaign_data)
-                new_campaign = save_campaign_to_db(db, company.company_id, campaign_data)
-
-                await message.reply(
-                    f"Кампания '{new_campaign.campaign_name}' успешно создана, и тема '{thread_name}' добавлена в чат!"
-                )
-                await state.clear()
-
-            except ValueError as ve:
-                logger.error(f"Ошибка при сохранении данных в БД: {ve}")
-                await message.reply(str(ve))
-            finally:
-                db.close()
+            # Переходим к следующему опросу
+            await handle_add_content_plan(message, state)
 
         except Exception as e:
             logger.error(f"Непредвиденная ошибка в confirm_campaign_creation: {e}", exc_info=True)
             await message.reply("Произошла ошибка при создании кампании.")
+        finally:
+            if db:
+                db.close()
+
     elif message.text.lower() in ["нет", "отмена"]:
         logger.info("Пользователь отменил создание кампании.")
         await message.reply("Добавление кампании отменено.")

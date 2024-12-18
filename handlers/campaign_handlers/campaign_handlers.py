@@ -307,12 +307,13 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
             await message.reply(
                 f"Кампания '{new_campaign.campaign_name}' успешно создана, и тема '{thread_name}' добавлена в чат!"
             )
-
-            # Сохраняем идентификатор кампании для создания контентного плана
-            await state.update_data(campaign_id=new_campaign.campaign_id)
-
-            # Переходим к следующему опросу
-            await handle_add_content_plan(message, state)
+            await state.clear()
+            #
+            # # Сохраняем идентификатор кампании для создания контентного плана
+            # await state.update_data(campaign_id=new_campaign.campaign_id)
+            #
+            # # Переходим к следующему опросу
+            # await handle_add_content_plan(message, state)
 
         except Exception as e:
             logger.error(f"Непредвиденная ошибка в confirm_campaign_creation: {e}", exc_info=True)

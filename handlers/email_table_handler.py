@@ -14,7 +14,7 @@ from db.email_table_db import check_table_exists, get_table_data
 from db.models import EmailTable
 from utils.google_doc import create_excel_with_multiple_sheets
 from states.states import AddEmailSegmentationState
-from parser_email_table import process_email_table
+from utils.parser_email_table import process_email_table
 
 logger = logging.getLogger(__name__)
 router = Router()

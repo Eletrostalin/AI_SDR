@@ -1,6 +1,5 @@
 import asyncio
 from aiogram import Dispatcher
-
 from aiogram.fsm.storage.memory import MemoryStorage
 from logger import logger
 from chat_handlers import router as chat_router
@@ -13,12 +12,18 @@ from handlers.campaign_handlers.campaign_delete_handler import (
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery  # Для обработки инлайн-кнопок
 from bot import bot
-from config import TELEGRAM_TOKEN, TARGET_CHAT_ID
+from config import TARGET_CHAT_ID
+from db.migration_manager import apply_migrations  # Импорт функции миграций
 
 
 async def main():
     # Логирование начала работы бота
     logger.info("Запуск бота...")
+
+    # Применение миграций перед запуском
+    logger.info("Применение миграций...")
+    await apply_migrations()
+    logger.info("Миграции успешно применены.")
 
     dp = Dispatcher(storage=MemoryStorage())
 

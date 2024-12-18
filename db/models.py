@@ -181,3 +181,13 @@ class Templates(Base):
 
     # Связь с Campaigns
     campaign = relationship("Campaigns", back_populates="templates")
+
+class Migration(Base):
+    """
+    Таблица для хранения информации о применённых миграциях.
+    """
+    __tablename__ = "migrations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)  # Уникальный идентификатор
+    migration_name = Column(String, nullable=False, unique=True)  # Имя файла миграции
+    applied_at = Column(DateTime, default=func.now(), nullable=False)  # Время применения

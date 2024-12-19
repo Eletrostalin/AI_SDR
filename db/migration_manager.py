@@ -1,14 +1,15 @@
 import os
 import logging
 from sqlalchemy import select
-from config import DATABASE_URL
 from db.models import Migration
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text
 
-engine = create_async_engine(DATABASE_URL, echo=True)
 
+DATABASE_URL="postgresql+psycopg://postgres:13579033@localhost:5432/AI_SDR_stage"
+
+engine = create_async_engine(DATABASE_URL, echo=True)
 # Настройка фабрики для создания асинхронных сессий
 async_session = sessionmaker(
     bind=engine,            # Привязка к асинхронному движку

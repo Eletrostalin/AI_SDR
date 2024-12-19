@@ -71,8 +71,8 @@ async def dispatch_classification(classification: dict, message: Message, state:
                 await handle_email_table_request(message, state)
             elif action_type == "view" and entity_type == "email_table":
                 await handle_view_email_table(message, state)  # Новый обработчик
-            elif action_type == "add" and entity_type == "content_plan":
-                await handle_add_content_plan(message, state)  # Новый обработчик для content_plan
+            # elif action_type == "add" and entity_type == "content_plan":
+            #     await handle_add_content_plan(message, state)  # Новый обработчик для content_plan
             else:
                 logger.warning(f"Не удалось обработать запрос: {classification}")
                 await message.reply("К сожалению, я не могу обработать ваш запрос. Попробуйте снова.")

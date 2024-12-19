@@ -1,99 +1,85 @@
 from aiogram import Router
-from aiogram.exceptions import TelegramMigrateToChat, TelegramForbiddenError
-from aiogram.fsm.storage.base import StorageKey
-from aiogram.types import Message, ChatMemberUpdated, ContentType, ChatMemberLeft
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.types import ChatMemberUpdated, Message, ContentType
 from sqlalchemy.orm import Session
-from aiogram.filters import Command
 
-
-from admin.ThreadManager import create_new_thread
-from bot import bot
 from classifier import classify_message
 from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
-from db.db_thread import save_thread_to_db
 from db.models import Company
 from dispatcher import dispatch_classification
-from states.states import OnboardingState, EditCompanyState, AddCampaignState, AddEmailSegmentationState
-import logging
+from states.states import OnboardingState
+from logger import logger
+from states.states_handlers import handle_onboarding_states, handle_edit_company_states, handle_add_campaign_states, \
+    handle_add_content_plan_states, handle_add_email_segmentation_states
 
-from states.states_handlers import handle_add_campaign_states, handle_edit_company_states, handle_onboarding_states, \
-    handle_add_email_segmentation_states, handle_add_content_plan_states
-
-logger = logging.getLogger(__name__)
 router = Router()
 
 
-
-@router.message(Command("init"))
-async def initialize_topics(message: Message):
+# Централизованная функция создания событий
+def create_event_data(event: ChatMemberUpdated | Message, new_member=None) -> dict:
     """
-    Команда /init: Создание тем в чате.
+    Унифицирует данные для обработки событий добавления пользователей.
     """
-    chat_id = message.chat.id
-    bot = message.bot
-
-    try:
-        # Получаем информацию о чате
-        chat = await bot.get_chat(chat_id)
-
-        # Проверяем, поддерживает ли чат темы
-        if not chat.is_forum:
-            await message.answer("Этот чат не поддерживает темы. Включите их в настройках чата.")
-            return
-
-        # Проверяем права бота
-        admins = await bot.get_chat_administrators(chat_id)
-        bot_admin = next((admin for admin in admins if admin.user.id == bot.id), None)
-        if not bot_admin or not bot_admin.can_manage_chat:
-            await message.answer("У бота недостаточно прав для управления темами.")
-            return
-
-        db: Session = SessionLocal()
-        try:
-            created_threads = []
-
-            # Создание темы "Notification"
-            notification_topic_id = await create_new_thread(bot, chat_id, "Notification")
-            if notification_topic_id:
-                save_thread_to_db(db, chat_id, notification_topic_id, "Notification")
-                created_threads.append("Notification")
-
-            logger.info(f"Темы {created_threads} успешно созданы в чате {chat_id}.")
-            await message.answer(f"Темы {', '.join(created_threads)} успешно созданы.")
-        except Exception as e:
-            logger.error(f"Ошибка при создании тем в чате {chat_id}: {e}", exc_info=True)
-            await message.answer("Произошла ошибка при создании тем. Проверьте логи бота.")
-        finally:
-            db.close()
-
-    except TelegramMigrateToChat as migrate_error:
-        new_chat_id = migrate_error.migrate_to_chat_id
-        logger.warning(f"Чат обновлён до супергруппы. Новый ID: {new_chat_id}")
-        await message.answer(f"Чат обновлён до супергруппы. Новый ID: {new_chat_id}. Повторите команду.")
-    except Exception as e:
-        logger.error(f"Ошибка обработки команды /init в чате {chat_id}: {e}", exc_info=True)
-        await message.answer("Произошла ошибка при обработке команды. Проверьте логи бота.")
+    if isinstance(event, ChatMemberUpdated):
+        # Если это объект ChatMemberUpdated
+        return {
+            "chat": event.chat,
+            "new_chat_member": {
+                "user": event.new_chat_member.user,
+                "status": event.new_chat_member.status,
+            },
+            "old_chat_member": {
+                "user": event.old_chat_member.user,
+                "status": event.old_chat_member.status,
+            },
+            "bot": event.bot,
+        }
+    elif isinstance(event, Message) and new_member:
+        # Если это Message с новым участником
+        return {
+            "chat": event.chat,
+            "new_chat_member": {
+                "user": new_member,
+                "status": "member",  # Статус по умолчанию
+            },
+            "old_chat_member": {
+                "user": event.from_user,
+                "status": "left",  # Симулируем предыдущее состояние
+            },
+            "bot": event.bot,
+        }
+    else:
+        raise ValueError("Неподдерживаемый тип события для create_event_data")
 
 
 @router.chat_member()
-async def greet_new_user(event: dict, state: FSMContext):
+async def greet_new_user(event: ChatMemberUpdated | dict, state: FSMContext):
     """
-    Обработчик добавления нового пользователя в чат.
+    Обработчик добавления нового пользователя в чат. Поддерживает объекты и словари.
     """
     try:
-        new_chat_member = event["new_chat_member"]
-        old_chat_member = event["old_chat_member"]
+        # Унификация данных
+        event_data = create_event_data(event) if isinstance(event, ChatMemberUpdated) else event
+
+        # Извлечение данных
+        new_chat_member = event_data["new_chat_member"]
+        old_chat_member = event_data["old_chat_member"]
+        chat_id = event_data["chat"].id
+        bot = event_data["bot"]
+        bot_id = bot.id
 
         # Проверка статусов
         if new_chat_member["status"] == "member" and old_chat_member["status"] in {"left", "kicked"}:
             telegram_user = new_chat_member["user"]
-            chat_id = event["chat"].id
-            bot = event["bot"]
-            bot_id = bot.id
 
-            logger.debug(f"Новый пользователь {telegram_user.full_name} добавлен в чат {chat_id}. Проверка в базе данных.")
+            # Пропускаем добавление бота
+            if telegram_user.id == bot_id:
+                logger.debug("Бот добавлен в чат. Пропускаем обработку.")
+                return
+
+            logger.debug(f"Новый пользователь {telegram_user.full_name} добавлен в чат {chat_id}.")
             db: Session = SessionLocal()
             try:
                 # Проверяем существование компании
@@ -103,12 +89,7 @@ async def greet_new_user(event: dict, state: FSMContext):
                 user = create_or_get_company_and_user(db, telegram_user, chat_id)
 
                 if not existing_company:
-                    # Если компания не существовала, это первый пользователь компании
-                    logger.debug(
-                        f"Компания для чата {chat_id} не найдена. Устанавливаем онбординг для {telegram_user.full_name}."
-                    )
-
-                    # Привязка состояния к добавленному пользователю
+                    logger.debug(f"Компания для чата {chat_id} не найдена. Устанавливаем онбординг.")
                     await state.storage.set_state(
                         key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
                         state=OnboardingState.waiting_for_company_name
@@ -117,8 +98,6 @@ async def greet_new_user(event: dict, state: FSMContext):
                         key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
                         data={"company_id": user.company_id}
                     )
-
-                    # Отправляем сообщение о начале онбординга в общий чат
                     await bot.send_message(
                         chat_id=chat_id,
                         text=(
@@ -127,10 +106,7 @@ async def greet_new_user(event: dict, state: FSMContext):
                         )
                     )
                 else:
-                    # Приветственное сообщение для последующих пользователей
-                    logger.debug(
-                        f"Компания для чата {chat_id} уже существует. Пользователь {telegram_user.full_name} добавлен."
-                    )
+                    logger.debug("Приветствие для существующей компании.")
                     await bot.send_message(
                         chat_id=chat_id,
                         text=(
@@ -142,8 +118,10 @@ async def greet_new_user(event: dict, state: FSMContext):
                 logger.error(f"Ошибка обработки нового пользователя: {e}", exc_info=True)
             finally:
                 db.close()
-    except KeyError as e:
-        logger.error(f"Ошибка в структуре события: {e}", exc_info=True)
+
+    except Exception as e:
+        logger.error(f"Ошибка в greet_new_user: {e}", exc_info=True)
+
 
 @router.message()
 async def handle_message(message: Message, state: FSMContext):
@@ -165,17 +143,15 @@ async def handle_message(message: Message, state: FSMContext):
         if message.content_type == ContentType.NEW_CHAT_MEMBERS:
             for new_member in message.new_chat_members:
                 event_data = {
-                    "chat": message.chat,
-                    "from_user": message.from_user,
-                    "new_chat_member": {
-                        "user": new_member,
-                        "status": "member",  # Симулируем статус
+                    "chat_id": message.chat.id,
+                    "new_user": {
+                        "id": new_member.id,
+                        "username": new_member.username,
+                        "full_name": new_member.full_name,
+                        "status": "member",
                     },
-                    "old_chat_member": {
-                        "user": message.from_user,
-                        "status": "left",  # Симулируем предыдущее состояние
-                    },
-                    "bot": message.bot,
+                    "old_status": "left",  # Предположительно, пользователь был вне чата
+                    "bot_id": message.bot.id,
                 }
                 logger.debug(f"Обрабатываем добавление нового пользователя: {new_member.full_name}")
                 await greet_new_user(event_data, state)

@@ -1,14 +1,10 @@
 from aiogram.filters import StateFilter
-from sqlalchemy.exc import SQLAlchemyError
 
 from admin.ThreadManager import create_thread
-from db.db_campaign import create_campaign
 from db.db_thread import save_campaign_to_db, save_thread_to_db
-from handlers.content_plan_handlers import handle_add_content_plan
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
-from db.models import ChatThread
 from states.states import AddCampaignState, BaseState
 from classifier import extract_campaign_data_with_validation
 from aiogram import Router

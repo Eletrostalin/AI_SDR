@@ -1,10 +1,4 @@
-EMAIL_SEGMENT_COLUMNS = [
-    "name", "tax_id", "registration_date", "address", "region", "status",
-    "msp_registry", "director_name", "director_position", "phone_number",
-    "email", "website", "primary_activity", "other_activities", "licenses",
-    "revenue", "balance", "net_profit_or_loss", "arbitration_defendant",
-    "employee_count", "branch_count"
-]
+from db.models import EMAIL_SEGMENT_COLUMNS
 
 
 def generate_column_mapping_prompt(user_columns: list) -> str:

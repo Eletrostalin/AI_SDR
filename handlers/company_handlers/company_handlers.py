@@ -114,47 +114,6 @@ async def confirm_company_information(message: Message, state: FSMContext):
         )
         await state.clear()
 
-
-@router.message()
-async def handle_view_company(message: Message, state: FSMContext):
-    """
-    Отображает информацию о компании на основе chat_id.
-    """
-    logger.debug("Запрос на отображение информации о компании.")
-    chat_id = str(message.chat.id)
-    db = SessionLocal()
-
-    try:
-        company = get_company_by_chat_id(db, chat_id)
-        if not company:
-            logger.warning(f"Компания с chat_id {chat_id} не найдена.")
-            await message.reply("Компания не найдена. Возможно, вы ещё не добавили её.")
-            return
-
-        logger.debug(f"Компания найдена: {company}")
-        company_info = get_company_info_by_company_id(db, company.company_id)
-        if not company_info:
-            logger.warning(f"Информация о компании с ID {company.company_id} отсутствует.")
-            await message.reply("Информация о вашей компании отсутствует.")
-            return
-
-        await message.reply(
-            "Информация о вашей компании:\n"
-            "```json\n"
-            f"{json.dumps(company_info, indent=4, ensure_ascii=False)}"
-            "\n```",
-            parse_mode="Markdown"
-        )
-        await state.clear()
-        logger.debug(f"Информация о компании отправлена пользователю: {company_info}")
-
-    except Exception as e:
-        logger.error(f"Ошибка отображения информации о компании: {e}", exc_info=True)
-        await message.reply(f"Ошибка при извлечении данных: {str(e)}")
-    finally:
-        db.close()
-
-
 @router.message()
 async def handle_edit_company(message: Message, state: FSMContext):
     """
@@ -280,39 +239,5 @@ async def confirm_edit_company_information(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Ошибка при подтверждении изменений компании: {e}", exc_info=True)
         await message.reply("Произошла ошибка при обработке подтверждения. Попробуйте снова.")
-    finally:
-        db.close()
-
-@router.message()
-async def handle_delete_additional_info(message: Message, state: FSMContext):
-    """
-    Удаляет содержимое колонки `additional_info` для компании.
-    """
-    db = SessionLocal()
-    try:
-        chat_id = str(message.chat.id)
-        company = get_company_by_chat_id(db, chat_id)
-
-        if not company:
-            await message.reply("Компания не найдена. Убедитесь, что вы добавили данные компании.")
-            return
-
-        # Проверяем, есть ли информация для удаления
-        company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
-
-        if not company_info or not company_info.additional_info:
-            await message.reply("Дополнительная информация уже отсутствует.")
-            return
-
-        # Удаляем данные из `additional_info`
-        delete_additional_info(db, company.company_id)
-        await message.reply("Дополнительная информация успешно удалена.")
-
-        # Сбрасываем состояние
-        await state.clear()
-
-    except Exception as e:
-        logger.error(f"Ошибка при удалении дополнительной информации: {e}", exc_info=True)
-        await message.reply("Произошла ошибка при удалении дополнительной информации. Попробуйте снова.")
     finally:
         db.close()

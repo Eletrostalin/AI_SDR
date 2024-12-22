@@ -3,8 +3,9 @@ from aiogram import Router
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
+# Подтверждение и сохранение
+from datetime import datetime
 from db.db import SessionLocal
-from db.db_company import get_company_by_chat_id
 from db.models import ContentPlan, Waves, Campaigns, ChatThread
 from states.states import AddContentPlanState
 from logger import logger
@@ -95,10 +96,6 @@ async def process_wave_details(message: Message, state: FSMContext):
 
     except ValueError:
         await message.reply("Некорректная дата или время. Убедитесь, что вы используете формат 'дата время тема'.")
-
-
-# Подтверждение и сохранение
-from datetime import datetime
 
 
 # Подтверждение и сохранение

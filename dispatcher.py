@@ -1,11 +1,13 @@
 from db.db import SessionLocal
 from handlers.campaign_handlers.campaign_delete_handler import handle_delete_campaign_request
 from handlers.campaign_handlers.campaign_view_handler import handle_view_campaigns
-from handlers.company_handlers import handle_view_company, handle_edit_company, handle_delete_additional_info
+from handlers.company_handlers.company_delete_handlers import handle_delete_additional_info
+from handlers.company_handlers.conpany_view_handlers import handle_view_company
+from handlers.company_handlers.company_handlers import handle_edit_company
 from handlers.campaign_handlers.campaign_handlers import handle_add_campaign
-from handlers.content_plan_handlers import handle_add_content_plan
+from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from handlers.email_table_handler import handle_email_table_request, handle_view_email_table
-from handlers.segmentation_handlers import handle_create_segment
+from handlers.segmentation_handlers.segmentation_add_handlers import handle_create_segment
 from logger import logger
 
 from sqlalchemy.orm import Session

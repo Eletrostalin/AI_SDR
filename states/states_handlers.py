@@ -5,11 +5,12 @@ from handlers.content_plan_handlers import (process_content_plan_description,
                                             process_wave_count,
                                             process_wave_details,
                                             confirm_content_plan)
+from handlers.segmentation_handlers import process_confirmation, handle_create_segment
 from states.states import (OnboardingState,
                            AddEmailSegmentationState,
                            EditCompanyState,
                            AddCampaignState,
-                           AddContentPlanState)
+                           AddContentPlanState, SegmentationState)
 from handlers.campaign_handlers.campaign_handlers import process_campaign_name, process_start_date, process_end_date, \
     process_campaign_params, handle_full_campaign_data, confirm_campaign_creation
 from handlers.company_handlers import process_edit_company_information, confirm_edit_company_information
@@ -101,3 +102,14 @@ async def handle_add_content_plan_states(message: Message, state: FSMContext, cu
     elif current_state == AddContentPlanState.waiting_for_confirmation.state:
         # Обработка подтверждения контентного плана
         await confirm_content_plan(message, state)
+
+async def handle_segmentation_states(message: Message, state: FSMContext, current_state: str):
+    """
+    Обрабатывает состояния создания сегментации.
+    """
+    if current_state == SegmentationState.waiting_for_confirmation.state:
+        await process_confirmation(message, state)
+    elif current_state == SegmentationState.waiting_for_filters.state:
+        await handle_create_segment(message, state)
+    else:
+        logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")

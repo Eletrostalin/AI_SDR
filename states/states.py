@@ -45,6 +45,11 @@ class EditCompanyState(StatesGroup):
     waiting_for_updated_info = State()
     waiting_for_confirmation = State()
 
+class SegmentationState(StatesGroup):
+    waiting_for_filters = State()
+    waiting_for_confirmation = State()
+
+
 class DeleteCampaignState(StatesGroup):
     waiting_for_campaign_selection = State()
     waiting_for_campaign_confirmation = State()

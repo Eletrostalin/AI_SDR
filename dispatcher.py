@@ -5,6 +5,7 @@ from handlers.company_handlers import handle_view_company, handle_edit_company, 
 from handlers.campaign_handlers.campaign_handlers import handle_add_campaign
 from handlers.content_plan_handlers import handle_add_content_plan
 from handlers.email_table_handler import handle_email_table_request, handle_view_email_table
+from handlers.segmentation_handlers import handle_create_segment
 from logger import logger
 
 from sqlalchemy.orm import Session
@@ -71,6 +72,9 @@ async def dispatch_classification(classification: dict, message: Message, state:
                 await handle_email_table_request(message, state)
             elif action_type == "view" and entity_type == "email_table":
                 await handle_view_email_table(message, state)  # Новый обработчик
+             # Новый обработчик для просмотра сегментации
+            # elif action_type == "delete" and entity_type == "segment":
+            #     await handle_delete_segment(message, state)  # Новый обработчик для удаления сегмента
             # elif action_type == "add" and entity_type == "content_plan":
             #     await handle_add_content_plan(message, state)  # Новый обработчик для content_plan
             else:
@@ -82,6 +86,8 @@ async def dispatch_classification(classification: dict, message: Message, state:
                 await handle_delete_campaign_request(message, state)
             elif action_type == "add" and entity_type == "content_plan":
                 await handle_add_content_plan(message, state)  # Допустим, content_plan можно создавать в других темах
+            elif action_type == "add" and entity_type == "segment":
+                await handle_create_segment(message, state)
             else:
                 await message.reply(
                     "Эта операция доступна только в теме general. Пожалуйста, перейдите в основную тему и повторите запрос."

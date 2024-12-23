@@ -15,9 +15,7 @@ from logger import logger
 from db.db import SessionLocal
 from utils.utils import process_message
 from db.db_company import (save_company_info,
-                           get_company_info_by_company_id,
-                           get_company_by_chat_id,
-                           delete_additional_info)
+                           get_company_by_chat_id,)
 
 router = Router()
 

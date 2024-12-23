@@ -1,12 +1,11 @@
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
-
-from chat_handlers import router
 from db.models import CompanyInfo
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import (get_company_by_chat_id,
                            delete_additional_info)
+from handlers.company_handlers.company_handlers import router
 
 
 @router.message()

@@ -3,12 +3,12 @@ from aiogram import Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from logger import logger
 from chat_handlers import router as chat_router
-from handlers.company_handlers import router as company_router
 from handlers.campaign_handlers.campaign_handlers import router as campaign_router  # Маршрутизатор кампаний
 from handlers.campaign_handlers.campaign_delete_handler import (
     handle_delete_campaign_request,
     handle_campaign_deletion_callback,  # Обработчик инлайн-кнопок для удаления кампаний
 )
+from handlers.company_handlers.company_handlers import router as company_router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery  # Для обработки инлайн-кнопок
 from bot import bot

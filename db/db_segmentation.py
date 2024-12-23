@@ -65,3 +65,13 @@ def add_segment_summary(db: Session, company_id: int, table_name: str, descripti
         logger.error(f"Ошибка при добавлении записи о сегменте '{table_name}': {e}", exc_info=True)
         db.rollback()
         raise
+
+def get_segments_by_company_id(db: Session, company_id: int):
+    """
+    Извлекает все сегменты, связанные с данной компанией.
+
+    :param db: Сессия базы данных.
+    :param company_id: ID компании.
+    :return: Список объектов SegmentSummary.
+    """
+    return db.query(SegmentSummary).filter(SegmentSummary.company_id == company_id).all()

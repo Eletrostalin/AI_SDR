@@ -54,7 +54,6 @@ class Company(Base):
     users = relationship("User", back_populates="company")
     content_plans = relationship("ContentPlan", back_populates="company")
     waves = relationship("Waves", back_populates="company")
-    segments = relationship("SegmentSummary", back_populates="company")
 
 
 class CompanyInfo(Base):
@@ -90,6 +89,7 @@ class Campaigns(Base):
     status = Column(String, default="active", nullable=False)
     status_for_user = Column(Boolean, default=True, nullable=False)
     params = Column(JSON, nullable=True)
+    segments = Column(JSONB, nullable=True)
 
     # Связи
     templates = relationship("Templates", back_populates="campaign")
@@ -107,9 +107,6 @@ class EmailTable(Base):
     table_name = Column(String, nullable=False, unique=True)  # Уникальное имя таблицы для каждой компании
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
-
-    # Связь с сегментами
-    segments = relationship("EmailSegments", back_populates="email_table")
 
 
 class ContentPlan(Base):
@@ -147,19 +144,6 @@ class Waves(Base):
     company = relationship("Company", back_populates="waves")
 
 
-class SegmentSummary(Base):
-    __tablename__ = "segment_summary"
-
-    segment_id = Column(Integer, primary_key=True, autoincrement=True)  # Уникальный ID сегмента
-    company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)  # Привязка к компании
-    segment_table_name = Column(String, nullable=False, unique=True)  # Имя таблицы сегмента
-    created_at = Column(DateTime, default=func.now(), nullable=False)  # Дата создания
-    status = Column(String, default="active", nullable=False)  # Статус (active, deleted)
-    description = Column(Text, nullable=True)  # Описание сегмента
-    params = Column(JSON, nullable=True)  # Параметры сегментации (запрос и фильтры)
-
-    # Связь с Company
-    company = relationship("Company", back_populates="segments")
 
 
 class Templates(Base):

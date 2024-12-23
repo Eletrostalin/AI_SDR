@@ -1,13 +1,11 @@
 import json
-
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
-
-from chat_handlers import router
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import (get_company_info_by_company_id,
                            get_company_by_chat_id)
+from handlers.company_handlers.company_handlers import router
 
 
 @router.message()

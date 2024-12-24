@@ -60,3 +60,25 @@ async def initialize_topics(message: Message):
     except Exception as e:
         logger.error(f"Ошибка обработки команды /init в чате {chat_id}: {e}", exc_info=True)
         await message.answer("Произошла ошибка при обработке команды. Проверьте логи бота.")
+
+
+from aiogram import Router, types
+from aiogram.fsm.context import FSMContext
+from aiogram.filters import Command
+
+# Инициализируем маршрутизатор
+router = Router()
+
+@router.message(Command("home"))
+async def home_command_handler(message: types.Message, state: FSMContext):
+    """
+    Обработчик команды /home.
+    Сбрасывает состояние и отправляет приветственное сообщение.
+    """
+    # Сброс состояния
+    await state.clear()
+
+    # Отправляем приветственное сообщение
+    await message.answer(
+        "Состояние сброшено"
+    )

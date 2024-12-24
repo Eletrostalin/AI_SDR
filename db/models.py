@@ -150,13 +150,14 @@ class Templates(Base):
     __tablename__ = "templates"
 
     template_id = Column(Integer, primary_key=True, autoincrement=True)
-    campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"), nullable=False)
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
-    content_plan = Column(String, nullable=True)
-    content = Column(Text, nullable=False)
+    campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"), nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
+    user_request = Column(Text, nullable=False)
+    template_content = Column(Text, nullable=False)
 
-    # Связь с Campaigns
+    # Связь с Company и Campaign
+    company = relationship("Company", back_populates="templates")
     campaign = relationship("Campaigns", back_populates="templates")
 
 class Migration(Base):

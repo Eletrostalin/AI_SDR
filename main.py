@@ -8,6 +8,7 @@ from handlers.campaign_handlers.campaign_delete_handler import (
     handle_delete_campaign_request,
     handle_campaign_deletion_callback,  # Обработчик инлайн-кнопок для удаления кампаний
 )
+from admin.admin_commands import router as home_router
 from handlers.company_handlers.company_handlers import router as company_router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery  # Для обработки инлайн-кнопок
@@ -42,6 +43,7 @@ def setup_routers(dp: Dispatcher):
     Настраивает маршрутизаторы, подключая обработчики для чата с пользователями
     и для команд администратора.
     """
+    dp.include_router(home_router)  # Регистрация команды /home
     dp.include_router(chat_router)
     dp.include_router(company_router)
     dp.include_router(campaign_router)

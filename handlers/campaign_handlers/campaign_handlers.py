@@ -319,7 +319,8 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
     if message.text.strip().lower() == "да":
         db = SessionLocal()
         try:
-            campaign_data = await state.get_data("campaign_data")
+            state_data = await state.get_data()
+            campaign_data = state_data.get("campaign_data")
             chat_id = str(message.chat.id)
             company = get_company_by_chat_id(db, chat_id)
 
@@ -331,6 +332,12 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
             bot = message.bot
             thread_name = f"Кампания: {campaign_data['campaign_name']}"
             thread_id = await create_thread(bot, chat_id, thread_name)
+            logger.debug(f"Созданный thread_id: {thread_id}")
+            if thread_id:
+                campaign_data["thread_id"] = thread_id
+                await state.update_data(campaign_data=campaign_data)
+            else:
+                raise ValueError("Ошибка: thread_id не был создан.")
 
             save_thread_to_db(db, chat_id, thread_id, thread_name)
             save_campaign_to_db(db, company.company_id, campaign_data)

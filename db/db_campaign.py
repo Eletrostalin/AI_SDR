@@ -1,20 +1,31 @@
 from datetime import datetime
 
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from logger import logger
 from db.models import Campaigns, ChatThread
 
 
-def create_campaign(db: Session, company_id: int, campaign_name: str, start_date: str, end_date: str, params: dict, thread_id: int) -> Campaigns:
+def create_campaign(
+    db: Session,
+    company_id: int,
+    campaign_name: str,
+    start_date: str,
+    end_date: str,
+    params: dict,
+    segments: dict,
+    thread_id: int,
+) -> Campaigns:
     """
-    Создает новую кампанию в базе данных, включая связь с thread_id.
+    Создает новую кампанию в базе данных.
     """
-    logger.debug(f"Создание кампании: company_id={company_id}, campaign_name={campaign_name}, start_date={start_date}, "
-                 f"end_date={end_date}, params={params}, thread_id={thread_id}")
+    logger.debug(
+        f"Создание кампании: company_id={company_id}, campaign_name={campaign_name}, "
+        f"start_date={start_date}, end_date={end_date}, params={params}, segments={segments}, thread_id={thread_id}"
+    )
 
-    # Преобразуем даты в формат YYYY-MM-DD
+    # Преобразование дат в формат YYYY-MM-DD
     try:
         start_date = datetime.strptime(start_date, "%d.%m.%Y").strftime("%Y-%m-%d")
         end_date = datetime.strptime(end_date, "%d.%m.%Y").strftime("%Y-%m-%d")
@@ -22,33 +33,37 @@ def create_campaign(db: Session, company_id: int, campaign_name: str, start_date
         logger.error(f"Некорректный формат даты: {e}")
         raise ValueError("Неверный формат даты. Используйте формат ДД.ММ.ГГГГ.")
 
-    # Проверка существования thread_id в таблице chat_threads
+    # Проверка существования thread_id
     chat_thread = db.query(ChatThread).filter_by(thread_id=thread_id).first()
     if not chat_thread:
         logger.error(f"Тема с thread_id={thread_id} не найдена. Невозможно создать кампанию.")
         raise ValueError("Ошибка: Тема с указанным thread_id не существует.")
 
-    # Создаем новую кампанию
-    new_campaign = Campaigns(
-        company_id=company_id,
-        campaign_name=campaign_name,
-        start_date=start_date,
-        end_date=end_date,
-        params=params,
-        thread_id=thread_id  # Сохранение thread_id
-    )
-    db.add(new_campaign)
+    # Создание кампании
     try:
+        new_campaign = Campaigns(
+            company_id=company_id,
+            campaign_name=campaign_name,
+            start_date=start_date,
+            end_date=end_date,
+            params=params,
+            segments=segments,  # Сохраняем сегменты
+            thread_id=thread_id,
+        )
+        db.add(new_campaign)
         db.commit()
         db.refresh(new_campaign)
-        logger.info(f"Кампания успешно создана: id={new_campaign.campaign_id}, name={new_campaign.campaign_name}, thread_id={thread_id}")
+        logger.info(
+            f"Кампания успешно создана: id={new_campaign.campaign_id}, "
+            f"name={new_campaign.campaign_name}, segments={segments}, thread_id={thread_id}"
+        )
         return new_campaign
     except IntegrityError as e:
         logger.error(f"Ошибка IntegrityError при создании кампании: {e}")
         db.rollback()
         raise ValueError("Ошибка при создании кампании. Возможно, такая кампания уже существует.")
-    except Exception as e:
-        logger.error(f"Ошибка при создании кампании: {e}", exc_info=True)
+    except SQLAlchemyError as e:
+        logger.error(f"Ошибка SQLAlchemyError при создании кампании: {e}", exc_info=True)
         db.rollback()
         raise
 

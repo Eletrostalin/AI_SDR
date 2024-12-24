@@ -26,9 +26,10 @@ def save_thread_to_db(db: Session, chat_id: str, thread_id: int, thread_name: st
 
 def save_campaign_to_db(db: Session, company_id: int, campaign_data: dict):
     """
-    Сохраняет данные кампании в базу данных.
+    Сохраняет данные кампании в базу данных, включая сегменты.
     """
     try:
+        # Создаем новую кампанию с данными
         new_campaign = create_campaign(
             db=db,
             company_id=company_id,
@@ -36,10 +37,16 @@ def save_campaign_to_db(db: Session, company_id: int, campaign_data: dict):
             start_date=campaign_data.get("start_date"),
             end_date=campaign_data.get("end_date"),
             params=campaign_data.get("params", {}),
+            segments=campaign_data.get("filters", {}),  # Сохраняем сегменты как JSON
             thread_id=campaign_data.get("thread_id"),
         )
+
+        # Фиксируем изменения в базе данных
         db.commit()
-        logger.info(f"Кампания сохранена в базу данных: id={new_campaign.campaign_id}, name={new_campaign.campaign_name}")
+        logger.info(
+            f"Кампания сохранена в базу данных: id={new_campaign.campaign_id}, "
+            f"name={new_campaign.campaign_name}, segments={new_campaign.segments}"
+        )
         return new_campaign
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при сохранении кампании: {e}")

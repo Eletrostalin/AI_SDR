@@ -6,3 +6,5 @@ DROP TABLE IF EXISTS email_segments;
 
 -- Добавление колонки segments в таблицу campaigns
 ALTER TABLE campaigns ADD COLUMN segments JSONB;
+
+ALTER TABLE waves ALTER COLUMN send_time TYPE time WITHOUT TIME ZONE;

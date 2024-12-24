@@ -1,6 +1,7 @@
 from aiogram.filters import StateFilter
 from admin.ThreadManager import create_thread
 from db.db_thread import save_campaign_to_db, save_thread_to_db
+from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
@@ -343,7 +344,11 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
             save_campaign_to_db(db, company.company_id, campaign_data)
 
             await message.reply(f"Кампания '{campaign_data['campaign_name']}' успешно создана.")
-            await state.clear()
+
+            # Переход к созданию контентного плана
+            await message.reply("Теперь создадим контентный план для этой кампании...")
+            await handle_add_content_plan(message, state, thread_id=thread_id)  # Передаем thread_id
+
         except Exception as e:
             logger.error(f"Ошибка создания кампании: {e}", exc_info=True)
             await message.reply("Произошла ошибка при создании кампании.")

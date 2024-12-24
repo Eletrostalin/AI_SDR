@@ -1,10 +1,10 @@
 from aiogram.filters import StateFilter
 from admin.ThreadManager import create_thread
 from db.db_thread import save_campaign_to_db, save_thread_to_db
-from db.models import EMAIL_SEGMENT_COLUMNS
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
+from promts.campaign_promt import CAMPAIGN_DATA_PROMPT, EMAIL_SEGMENT_COLUMNS
 from states.states import AddCampaignState
 from aiogram import Router
 from aiogram.types import Message
@@ -13,6 +13,7 @@ from aiogram.fsm.context import FSMContext
 from utils.utils import send_to_model
 
 router = Router()
+
 
 @router.message(StateFilter(None))
 async def handle_add_campaign(message: Message, state: FSMContext):
@@ -47,32 +48,49 @@ async def process_campaign_data(message: Message, state: FSMContext):
     Обрабатывает данные кампании, отправляя их в модель для анализа.
     """
     user_input = message.text.strip()
+    logger.debug(f"Получен ввод данных кампании: {user_input}")
+
     try:
-        # Отправляем данные в модель
-        prompt = f"""
-        Анализируй текст: "{user_input}".
-        Извлеки следующие данные:
-        1. Дата начала (start_date) в формате ДД.ММ.ГГГГ.
-        2. Дата окончания (end_date) в формате ДД.ММ.ГГГГ.
-        3. Обязательные фильтры сегментации (filters) как словарь с ключами из списка:
-        {EMAIL_SEGMENT_COLUMNS}.
-        4. Дополнительные параметры (params) как словарь.
-        Если что-то отсутствует, оставь поле пустым. Пример ответа:
-        {{
-            "start_date": "01.01.2024",
-            "end_date": "",
-            "filters": {{"region": "Москва", "status": "active"}},
-            "params": {{"ЦУ": "Пример"}}
-        }}
-        """
-        response = await send_to_model(prompt)
-        campaign_data = validate_model_response(response)
+        # Проверяем наличие необходимых переменных
+        logger.debug(f"CAMPAIGN_DATA_PROMPT содержимое: {CAMPAIGN_DATA_PROMPT}")
+        logger.debug(f"EMAIL_SEGMENT_COLUMNS содержимое: {EMAIL_SEGMENT_COLUMNS}")
+
+        if not CAMPAIGN_DATA_PROMPT or not isinstance(CAMPAIGN_DATA_PROMPT, str):
+            raise ValueError("CAMPAIGN_DATA_PROMPT не определен или имеет неверный тип.")
+        if not EMAIL_SEGMENT_COLUMNS or not isinstance(EMAIL_SEGMENT_COLUMNS, list):
+            raise ValueError("EMAIL_SEGMENT_COLUMNS не определен или имеет неверный тип.")
+
+        # Формируем запрос для модели
+        prompt = CAMPAIGN_DATA_PROMPT.format(user_input=user_input)
+        logger.debug(f"Сформированный промт для модели: {prompt}")
+
+        # Отправляем запрос в модель
+        response = send_to_model(prompt)
+        logger.debug(f"Ответ модели: {response}")
+
+        # Обработка ответа от модели
+        import json
+        try:
+            campaign_data = json.loads(response)
+            logger.debug(f"Успешно декодирован JSON: {campaign_data}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Ошибка декодирования JSON из ответа модели: {e}")
+            await message.reply("Ошибка обработки данных. Попробуйте уточнить запрос.")
+            return
+
+        # Получение данных состояния
+        state_data = await state.get_data()
+
+        # Валидация данных
+        campaign_data = validate_model_response(campaign_data, state_data)
+        logger.debug(f"Результат валидации: {campaign_data}")
 
         if not campaign_data:
+            logger.error("Валидация завершилась неуспешно.")
             await message.reply("Ошибка в обработке данных. Попробуйте снова.")
             return
 
-        # Проверяем наличие дат и фильтров
+        # Проверка на недостающие данные
         missing_fields = []
         if not campaign_data.get("start_date"):
             missing_fields.append("дата начала")
@@ -82,6 +100,7 @@ async def process_campaign_data(message: Message, state: FSMContext):
             missing_fields.append("фильтры сегментации")
 
         if missing_fields:
+            logger.debug(f"Недостающие данные: {missing_fields}")
             await state.update_data(campaign_data=campaign_data)
             await message.reply(
                 f"Необходимо указать: {', '.join(missing_fields)}. Пожалуйста, уточните недостающие данные."
@@ -95,6 +114,7 @@ async def process_campaign_data(message: Message, state: FSMContext):
             return
 
         # Если все данные собраны
+        logger.debug("Все данные успешно собраны. Обновляем состояние.")
         await state.update_data(campaign_data=campaign_data)
         await message.reply(
             f"Проверьте данные кампании:\n"
@@ -327,35 +347,50 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
         await state.clear()
 
 
-def validate_model_response(response: dict) -> dict:
+def validate_model_response(response: dict, state_data: dict) -> dict:
     """
-    Проверяет и нормализует ответ модели.
+    Проверяет и нормализует ответ модели, добавляя имя кампании из состояния.
 
     :param response: Ответ модели (предполагается словарь).
-    :return: Словарь с проверенными данными или пустой словарь при ошибке.
+    :param state_data: Данные состояния FSM.
+    :return: Словарь с проверенными данными.
     """
     try:
+        logger.debug(f"Начало валидации ответа модели: {response}")
+
         # Инициализируем структуру данных
         campaign_data = {
-            "campaign_name": response.get("campaign_name", "").strip() or None,
+            "campaign_name": state_data.get("campaign_name") or response.get("campaign_name", "").strip() or None,
             "start_date": response.get("start_date", "").strip(),
             "end_date": response.get("end_date", "").strip(),
+            "filters": response.get("filters", {}),
             "params": response.get("params", {}),
         }
 
         # Проверяем формат дат
         from datetime import datetime
         if campaign_data["start_date"]:
-            datetime.strptime(campaign_data["start_date"], "%d.%m.%Y")  # Исключение при ошибке
+            logger.debug(f"Проверка даты начала: {campaign_data['start_date']}")
+            campaign_data["start_date"] = datetime.strptime(
+                campaign_data["start_date"], "%d.%m.%Y"
+            ).strftime("%d.%m.%Y")
         if campaign_data["end_date"]:
-            datetime.strptime(campaign_data["end_date"], "%d.%m.%Y")  # Исключение при ошибке
+            logger.debug(f"Проверка даты окончания: {campaign_data['end_date']}")
+            campaign_data["end_date"] = datetime.strptime(
+                campaign_data["end_date"], "%d.%m.%Y"
+            ).strftime("%d.%m.%Y")
 
-        # Убедимся, что "params" является словарем
+        # Убедимся, что "filters" и "params" являются словарями
+        if not isinstance(campaign_data["filters"], dict):
+            logger.warning(f"Поле 'filters' не является словарем: {campaign_data['filters']}")
+            campaign_data["filters"] = {}
         if not isinstance(campaign_data["params"], dict):
             logger.warning(f"Поле 'params' не является словарем: {campaign_data['params']}")
             campaign_data["params"] = {}
 
+        logger.debug(f"Результат валидации: {campaign_data}")
         return campaign_data
     except (ValueError, KeyError, TypeError) as e:
         logger.error(f"Ошибка валидации ответа модели: {e}", exc_info=True)
+        logger.debug(f"Ошибка в данных: {response}")
         return {}

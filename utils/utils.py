@@ -10,29 +10,36 @@ from classifier import client  # Здесь используется клиен�
 
 logger = logging.getLogger(__name__)
 
-async def send_to_model(prompt: str) -> dict:
-    """
-    Отправляет запрос в модель и возвращает результат.
 
-    :param prompt: Текст запроса для модели.
-    :return: Ответ модели в виде словаря.
+def send_to_model(prompt: str) -> dict:
+    """
+    Отправляет запрос в модель OpenAI и возвращает результат.
+
+    :param prompt: Текстовый запрос для модели.
+    :return: Результат работы модели в виде словаря.
     """
     try:
-        logger.debug(f"Отправляем запрос в модель: {prompt}")
-        response = await client.chat.completions.create(
+        logger.debug(f"Отправляем запрос в модель с prompt: {prompt}")
+
+        # Отправляем запрос
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
 
-        logger.debug(f"Ответ модели (сырой): {response}")
-        result = response.choices[0].message.content.strip()
-        logger.debug(f"Результат модели (обработанный): {result}")
+        # Логируем полный ответ
+        logger.debug(f"Полный ответ от модели: {response}")
 
-        # Преобразуем строку в словарь
-        import json
-        return json.loads(result)
+        # Проверяем и извлекаем текст ответа
+        if response.choices and len(response.choices) > 0:
+            result = response.choices[0].message.content.strip()
+            logger.debug(f"Извлеченный результат: {result}")
+            return result
+        else:
+            raise ValueError("Ответ модели не содержит 'choices' или они пусты.")
+
     except Exception as e:
-        logger.error(f"Ошибка при обращении к модели: {e}", exc_info=True)
+        logger.error(f"Ошибка при обращении к модели: {e}")
         raise
 
 

@@ -7,6 +7,7 @@ from handlers.company_handlers.company_handlers import handle_edit_company
 from handlers.campaign_handlers.campaign_handlers import handle_add_campaign
 from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from handlers.email_table_handler import handle_email_table_request, handle_view_email_table
+from handlers.tamplate_handlers.tamplate_handler import start_template_creation
 from logger import logger
 
 from sqlalchemy.orm import Session
@@ -72,12 +73,7 @@ async def dispatch_classification(classification: dict, message: Message, state:
             elif action_type == "add" and entity_type == "email_table":
                 await handle_email_table_request(message, state)
             elif action_type == "view" and entity_type == "email_table":
-                await handle_view_email_table(message, state)  # Новый обработчик
-             # Новый обработчик для просмотра сегментации
-            # elif action_type == "delete" and entity_type == "segment":
-            #     await handle_delete_segment(message, state)  # Новый обработчик для удаления сегмента
-            # elif action_type == "add" and entity_type == "content_plan":
-            #     await handle_add_content_plan(message, state)  # Новый обработчик для content_plan
+                await handle_view_email_table(message, state)
             else:
                 logger.warning(f"Не удалось обработать запрос: {classification}")
                 await message.reply("К сожалению, я не могу обработать ваш запрос. Попробуйте снова.")
@@ -85,6 +81,8 @@ async def dispatch_classification(classification: dict, message: Message, state:
             # Если тема не general
             if action_type == "delete" and entity_type == "campaign":
                 await handle_delete_campaign_request(message, state)
+            elif action_type == "add" and entity_type == "template":
+                await start_template_creation(message, state)
             elif action_type == "add" and entity_type == "content_plan":
                 await handle_add_content_plan(message, state)  # Допустим, content_plan можно создавать в других темах
             else:

@@ -54,6 +54,8 @@ class Company(Base):
     users = relationship("User", back_populates="company")
     content_plans = relationship("ContentPlan", back_populates="company")
     waves = relationship("Waves", back_populates="company")
+    templates = relationship("Templates", back_populates="company")
+
 
 
 class CompanyInfo(Base):
@@ -73,6 +75,7 @@ class CompanyInfo(Base):
 
     # Связь с Company
     company = relationship("Company", back_populates="info")
+
 
 
 
@@ -159,6 +162,7 @@ class Templates(Base):
     # Связь с Company и Campaign
     company = relationship("Company", back_populates="templates")
     campaign = relationship("Campaigns", back_populates="templates")
+
 
 class Migration(Base):
     """

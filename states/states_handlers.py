@@ -38,6 +38,7 @@ from handlers.campaign_handlers.campaign_handlers import (
 
 # Импорты для работы с email таблицами
 from handlers.email_table_handler import handle_file_upload
+from handlers.tamplate_handlers.tamplate_handler import confirm_template, generate_template
 
 # Импорт состояний
 from states.states import (
@@ -45,7 +46,7 @@ from states.states import (
     AddEmailSegmentationState,
     EditCompanyState,
     AddCampaignState,
-    AddContentPlanState,
+    AddContentPlanState, TemplateStates,
 )
 
 # Логгер
@@ -139,3 +140,12 @@ async def handle_add_content_plan_states(message: Message, state: FSMContext, cu
     elif current_state == AddContentPlanState.waiting_for_confirmation.state:
         # Обработка подтверждения контентного плана
         await confirm_content_plan(message, state)
+
+async def handle_template_states(message: Message, state: FSMContext, current_state: str):
+    """
+    Обрабатывает состояния создания шаблонов.
+    """
+    if current_state == TemplateStates.waiting_for_description.state:
+        await generate_template(message, state)
+    elif current_state == TemplateStates.waiting_for_confirmation.state:
+        await confirm_template(message, state)

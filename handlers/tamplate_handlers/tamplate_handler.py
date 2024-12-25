@@ -1,6 +1,8 @@
 from aiogram import Router, types
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
+
+from classifier import client
 from handlers.campaign_handlers.campaign_handlers import router
 from db.db_company import get_company_by_chat_id
 from db.db_content_plan import get_campaign_by_thread_id
@@ -14,6 +16,13 @@ from states.states import TemplateStates
 
 logger = logging.getLogger(__name__)
 
+def convert_object_to_dict(obj):
+    """
+    Преобразует объект SQLAlchemy в словарь.
+    """
+    return {column.name: getattr(obj, column.name) for column in obj.__table__.columns}
+
+
 @router.message(Command("add_template"))
 async def start_template_creation(message: types.Message, state: FSMContext):
     """
@@ -21,9 +30,17 @@ async def start_template_creation(message: types.Message, state: FSMContext):
     """
     db = SessionLocal()
     chat_id = str(message.chat.id)
+    thread_id = message.message_thread_id  # Получаем thread_id из сообщения
+
     try:
         company = get_company_by_chat_id(db, chat_id)
-        campaign = get_campaign_by_thread_id(db, chat_id)
+        campaign = get_campaign_by_thread_id(db, thread_id=thread_id)
+
+        # Преобразуем объекты в словарь для логирования
+        company_data = convert_object_to_dict(company) if company else None
+        campaign_data = convert_object_to_dict(campaign) if campaign else None
+
+        logger.debug(f"Компания: {company_data}, Кампания: {campaign_data}")
 
         if not company or not campaign:
             await message.reply(
@@ -35,7 +52,7 @@ async def start_template_creation(message: types.Message, state: FSMContext):
         await state.update_data(
             company_id=company.company_id,
             campaign_id=campaign.campaign_id,
-            company_info=company.info,  # Данные о компании
+            company_name=company.name or "Название компании не указано",  # Название компании
             campaign_name=campaign.campaign_name,
         )
 
@@ -52,13 +69,13 @@ async def generate_template(message: types.Message, state: FSMContext):
     """
     user_request = message.text.strip()
     state_data = await state.get_data()
-    company_info = state_data["company_info"]
+    company_name = state_data["company_name"]
     campaign_name = state_data["campaign_name"]
 
     # Генерация шаблона через GPT
     try:
         template_content = generate_email_template(
-            company_info=company_info,
+            company_name=company_name,
             campaign_name=campaign_name,
             user_request=user_request,
         )
@@ -111,23 +128,22 @@ async def confirm_template(message: types.Message, state: FSMContext):
         db.close()
 
 
-def generate_email_template(company_info: str, campaign_name: str, user_request: str) -> str:
+def generate_email_template(company_name: str, campaign_name: str, user_request: str) -> str:
     """
     Генерирует шаблон письма с помощью OpenAI GPT.
 
-    :param company_info: Информация о компании.
+    :param company_name: Название компании.
     :param campaign_name: Название кампании.
     :param user_request: Пожелания пользователя.
     :return: Сгенерированный текст шаблона.
     """
     # Используем функцию для получения текста промта
-    prompt = generate_email_template_prompt(company_info, campaign_name, user_request)
+    prompt = generate_email_template_prompt(company_name, campaign_name, user_request)
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
+            messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content.strip()
     except Exception as e:

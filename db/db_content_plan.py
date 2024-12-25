@@ -19,6 +19,7 @@ def get_campaign_by_thread_id(db: Session, thread_id: int):
     Возвращает кампанию по thread_id.
     """
     campaign = db.query(Campaigns).filter_by(thread_id=thread_id).first()
+    print(campaign)
     if not campaign:
         logger.error(f"Кампания с thread_id={thread_id} не найдена.")
     return campaign

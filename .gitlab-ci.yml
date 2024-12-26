@@ -1,17 +1,10 @@
-image: ubuntu:latest
+image: debian:latest
 
 stages:
   - deploy
 
 deploy:
   stage: deploy
-  before_script:
-    - apt-get update && apt-get install -y openssh-client rsync
-    - mkdir -p ~/.ssh
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-    - ssh-keyscan 62.217.183.24 >> ~/.ssh/known_hosts
-
   script:
     - echo "Deploying to server..."
-    - rsync -avz -e "ssh -o StrictHostKeyChecking=no" --exclude '.git' ./ root@62.217.183.24:/root/ai-sdr-agent
+    - cp -r . /root/ai-sdr-agent

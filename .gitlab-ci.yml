@@ -19,9 +19,11 @@ before_script:
 build:
   stage: build
   script:
+    - git pull git@62.217.183.24:ai-sdr-agent/ai-sdr-agent.git
     - docker-compose build
 
 deploy:
   stage: deploy
   script:
+    - docker-compose down
     - docker-compose up -d

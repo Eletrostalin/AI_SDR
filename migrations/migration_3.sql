@@ -1,10 +1,8 @@
--- Удаление внешнего ключа, если он существует
-ALTER TABLE email_tables DROP CONSTRAINT IF EXISTS email_tables_email_segments_fkey;
-
--- Удаление таблицы сегментов, если она больше не нужна
-DROP TABLE IF EXISTS email_segments;
-
--- Добавление колонки segments в таблицу campaigns
-ALTER TABLE campaigns ADD COLUMN segments JSONB;
-
-ALTER TABLE waves ALTER COLUMN send_time TYPE time WITHOUT TIME ZONE;
+DO $$ DECLARE
+    r RECORD;
+BEGIN
+    -- Удалить все таблицы, кроме migrations
+    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != 'migrations') LOOP
+        EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+    END LOOP;
+END $$;

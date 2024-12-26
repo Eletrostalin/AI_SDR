@@ -38,7 +38,7 @@ from handlers.campaign_handlers.campaign_handlers import (
 
 # Импорты для работы с email таблицами
 from handlers.email_table_handler import handle_file_upload
-from handlers.tamplate_handlers.tamplate_handler import confirm_template, generate_template
+from handlers.tamplate_handlers.tamplate_handler import confirm_template, generate_template, handle_subject
 
 # Импорт состояний
 from states.states import (
@@ -147,5 +147,7 @@ async def handle_template_states(message: Message, state: FSMContext, current_st
     """
     if current_state == TemplateStates.waiting_for_description.state:
         await generate_template(message, state)
+    elif current_state == TemplateStates.waiting_for_subject.state:
+        await handle_subject(message, state)
     elif current_state == TemplateStates.waiting_for_confirmation.state:
         await confirm_template(message, state)

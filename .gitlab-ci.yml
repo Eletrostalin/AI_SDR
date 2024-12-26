@@ -22,12 +22,9 @@ build:
   stage: build
   script:
     - cd /builds
-    - |
-      if [ -d "ai-sdr-agent" ]; then 
-        rm -rf ai-sdr-agent; 
-      fi
+    - 'if [ -d "ai-sdr-agent" ]; then rm -rf ai-sdr-agent; fi'
     - echo "Текущая директория перед клонированием: $(pwd)"
-    - git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git ai-sdr-agent || { echo "Не удалось клонировать репозиторий"; exit 1; }
+    - 'git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git ai-sdr-agent || { echo "Не удалось клонировать репозиторий"; exit 1; }'
 
 deploy:
   stage: deploy

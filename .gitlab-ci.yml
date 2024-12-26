@@ -4,10 +4,7 @@ services:
   - name: docker:20.10.16-dind
     command: ["--privileged"]
     entrypoint: [""]
-    ports:
-      - "2375:2375"
     # Используем mounts вместо volumes для монтирования каталога
-    # mount - путь на хосте: путь в контейнере
     mounts:
       - type: bind
         source: /root/ai-sdr-agent

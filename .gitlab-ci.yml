@@ -1,10 +1,26 @@
-image: debian:latest
+image: docker:latest
+
+services:
+  - docker:dind
+
+variables:
+  DOCKER_DRIVER: overlay2
 
 stages:
+  - build
   - deploy
+
+before_script:
+  - docker info
+  - apk add --no-cache py3-pip
+  - pip install docker-compose
+
+build:
+  stage: build
+  script:
+    - docker-compose build
 
 deploy:
   stage: deploy
   script:
-    - echo "Deploying to server..."
-    - cp -r . /root/ai-sdr-agent
+    - docker-compose up -d

@@ -1,0 +1,17 @@
+DO
+$$
+BEGIN
+IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'postgres') THEN
+CREATE ROLE postgres WITH LOGIN SUPERUSER PASSWORD '13579033';
+END IF;
+END
+$$;
+
+DO
+$$
+BEGIN
+IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'AI_SDR_stage') THEN
+CREATE DATABASE "AI_SDR_stage" OWNER postgres;
+END IF;
+END
+$$;

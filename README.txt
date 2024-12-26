@@ -29,3 +29,15 @@ Telegram Bot for Campaign Management
 
 Зависимости окружения хранятся в requirements.txt
 Переменные окружения храняться в .env
+
+Запуск проекта реализован через Docker.
+Для запуска локально необходимо:
+
+Сделать билд проекта -   
+docker-compose build --no-cache
+
+Запустить проект -
+docker-compose up
+
+Остановить его можно коммандой-
+docker-compose down

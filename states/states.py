@@ -61,4 +61,5 @@ class TemplateStates(StatesGroup):
     Состояния для создания шаблонов.
     """
     waiting_for_description = State()  # Ожидание описания или пожеланий пользователя
+    waiting_for_subject = State()
     waiting_for_confirmation = State()  # Ожидание подтверждения шаблона

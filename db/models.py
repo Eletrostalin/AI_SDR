@@ -156,6 +156,7 @@ class Templates(Base):
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
     campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"), nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
+    subject = Column(String, nullable=False)
     user_request = Column(Text, nullable=False)
     template_content = Column(Text, nullable=False)
 

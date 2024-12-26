@@ -36,7 +36,6 @@ async def start_template_creation(message: types.Message, state: FSMContext):
         company = get_company_by_chat_id(db, chat_id)
         campaign = get_campaign_by_thread_id(db, thread_id=thread_id)
 
-        # Преобразуем объекты в словарь для логирования
         company_data = convert_object_to_dict(company) if company else None
         campaign_data = convert_object_to_dict(campaign) if campaign else None
 
@@ -48,18 +47,34 @@ async def start_template_creation(message: types.Message, state: FSMContext):
             )
             return
 
-        # Сохраняем данные о компании и кампании в состояние
         await state.update_data(
             company_id=company.company_id,
             campaign_id=campaign.campaign_id,
-            company_name=company.name or "Название компании не указано",  # Название компании
+            company_name=company.name or "Название компании не указано",
             campaign_name=campaign.campaign_name,
         )
 
-        await message.reply("Введите описание или пожелания для шаблона.")
-        await state.set_state(TemplateStates.waiting_for_description)
+        await message.reply("Введите тему для шаблона.")
+        await state.set_state(TemplateStates.waiting_for_subject)
     finally:
         db.close()
+
+
+@router.message(StateFilter(TemplateStates.waiting_for_subject))
+async def handle_subject(message: types.Message, state: FSMContext):
+    """
+    Обрабатывает ввод темы письма.
+    """
+    subject = message.text.strip()
+    if not subject:
+        await message.reply("Тема не может быть пустой. Пожалуйста, введите тему для шаблона.")
+        return
+
+    # Сохраняем тему в состояние
+    await state.update_data(subject=subject)
+
+    await message.reply("Введите описание или пожелания для шаблона.")
+    await state.set_state(TemplateStates.waiting_for_description)
 
 
 @router.message(StateFilter(TemplateStates.waiting_for_description))
@@ -83,10 +98,18 @@ async def generate_template(message: types.Message, state: FSMContext):
 
         # Сохраняем данные в состояние
         await state.update_data(user_request=user_request, template_content=template_content)
+        # Получаем тему из состояния
+        state_data = await state.get_data()
+        subject = state_data.get("subject", "Нет темы")
 
+        # Формируем сообщение с темой и шаблоном
         await message.reply(
-            f"Вот предложенный шаблон:\n\n{template_content}\n\nУтвердить? (да/нет)"
+            f"Вот предложенный шаблон:\n\n"
+            f"Тема: {subject}\n\n"
+            f"{template_content}\n\n"
+            f"Утвердить? (да/нет)"
         )
+
         await state.set_state(TemplateStates.waiting_for_confirmation)
     except Exception as e:
         logger.error(f"Ошибка при генерации шаблона: {e}", exc_info=True)
@@ -104,6 +127,7 @@ async def confirm_template(message: types.Message, state: FSMContext):
             state_data = await state.get_data()
             company_id = state_data["company_id"]
             campaign_id = state_data["campaign_id"]
+            subject = state_data["subject"]
             user_request = state_data["user_request"]
             template_content = state_data["template_content"]
 
@@ -111,15 +135,26 @@ async def confirm_template(message: types.Message, state: FSMContext):
             new_template = Templates(
                 company_id=company_id,
                 campaign_id=campaign_id,
+                subject=subject,  # Сохраняем тему письма
                 user_request=user_request,
                 template_content=template_content,
             )
             db.add(new_template)
             db.commit()
 
-            await message.reply("Шаблон успешно сохранён!")
+            await message.reply(
+                f"Шаблон с темой '{subject}' успешно сохранён!\n\n"
+                f"Тема: {subject}\n\n"
+                f"Шаблон:\n{template_content}"
+            )
         else:
-            await message.reply("Создание шаблона отменено.")
+            state_data = await state.get_data()
+            subject = state_data.get("subject", "Нет темы")
+            template_content = state_data.get("template_content", "Нет текста")
+
+            await message.reply(
+                f"Создание шаблона отменено.\n\nТема: {subject}\n\nШаблон:\n{template_content}"
+            )
         await state.clear()
     except Exception as e:
         logger.error(f"Ошибка при создании шаблона: {e}", exc_info=True)

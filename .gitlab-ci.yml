@@ -1,5 +1,13 @@
 image: docker:20.10.16
 
+services:
+  - name: docker:20.10.16-dind
+    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Переопределяем точку входа для DinD
+
+variables:
+  DOCKER_HOST: unix:///var/run/docker.sock  # Используем сокет Docker на хосте
+  DOCKER_TLS_CERTDIR: ""  # Отключаем TLS для Docker
+
 stages:
   - build
   - deploy
@@ -8,22 +16,24 @@ before_script:
   - apk add --no-cache py3-pip
   - apk add --no-cache docker-compose
   - apk add --no-cache git
-  - echo "ENV_VARIABLE=value" > .env  # Create .env file
+  - echo "ENV_VARIABLE=value" > .env  # Создание файла .env
 
 build:
   stage: build
   script:
-    - cd /root/ai-sdr-agent  # Change to the existing directory
-    - git pull origin main  # Perform git pull from the repository
-    - docker-compose build  # Build containers using Docker Compose
-  only:
-    - main  # This job runs only for the main branch
+    - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
+    - git pull origin main  # Выполнение git pull из репозитория
+    - docker-compose build  # Строим контейнеры с помощью Docker Compose
+  volumes:
+    - /root/ai-sdr-agent:/builds/ai-sdr-agent  # Монтирование существующего каталога
 
 deploy:
   stage: deploy
   script:
-    - cd /root/ai-sdr-agent  # Change to the existing directory
-    - docker-compose down  # Stop old containers
-    - docker-compose up -d  # Start new containers in detached mode
+    - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
+    - docker-compose down  # Останавливаем старые контейнеры
+    - docker-compose up -d  # Запускаем новые контейнеры в фоновом режиме
+  volumes:
+    - /root/ai-sdr-agent:/builds/ai-sdr-agent  # Монтирование существующего каталога
   only:
-    - main  # This job runs only for the main branch
+    - main  # Эта стадия выполняется только для ветки main

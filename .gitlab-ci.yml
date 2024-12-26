@@ -2,33 +2,35 @@ image: docker:20.10.16
 
 services:
   - name: docker:20.10.16-dind
-    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Keep DinD running
+    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Переопределяем точку входа для DinD
 
 variables:
-  DOCKER_HOST: tcp://docker:2375  # Use TCP for Docker
-  DOCKER_TLS_CERTDIR: ""  # Disable TLS for Docker
-  DOCKER_DRIVER: overlay2  # Use overlay2 as the storage driver
+  DOCKER_HOST: tcp://docker:2375  # Используем TCP для Docker
+  DOCKER_TLS_CERTDIR: ""  # Отключаем TLS для Docker
 
 stages:
   - build
   - deploy
 
 before_script:
-  - apk add --no-cache py3-pip docker-compose git
-  - echo "ENV_VARIABLE=value" > .env  # Create .env file
+  - apk add --no-cache py3-pip
+  - apk add --no-cache docker-compose
+  - apk add --no-cache git
+  - echo "ENV_VARIABLE=value" > .env  # Создание файла .env
 
 build:
   stage: build
   script:
-    - cd /builds/ai-sdr-agent  # Navigate to the project directory
-    - git pull origin main  # Pull latest changes from the repository
-    - docker-compose build  # Build containers using Docker Compose
+    - if [ ! -d "/builds/ai-sdr-agent/.git" ]; then git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git /builds/ai-sdr-agent; fi  # Клонирование репозитория, если он не существует
+    - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
+    - git pull origin main  # Выполнение git pull из репозитория
+    - docker-compose build  # Строим контейнеры с помощью Docker Compose
 
 deploy:
   stage: deploy
   script:
-    - cd /builds/ai-sdr-agent  # Navigate to the project directory
-    - docker-compose down  # Stop old containers
-    - docker-compose up -d  # Start new containers in detached mode
+    - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
+    - docker-compose down  # Останавливаем старые контейнеры
+    - docker-compose up -d  # Запускаем новые контейнеры в фоновом режиме
   only:
-    - main  # This stage runs only for the main branch
+    - main  # Эта стадия выполняется только для ветки main

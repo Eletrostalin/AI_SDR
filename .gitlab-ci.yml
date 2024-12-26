@@ -1,13 +1,5 @@
 image: docker:20.10.16
 
-services:
-  - name: docker:20.10.16-dind
-    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Переопределяем точку входа для DinD
-
-variables:
-  DOCKER_HOST: unix:///var/run/docker.sock  # Используем сокет Docker на хосте
-  DOCKER_TLS_CERTDIR: ""  # Отключаем TLS для Docker
-
 stages:
   - build
   - deploy
@@ -21,13 +13,16 @@ before_script:
 build:
   stage: build
   script:
+    - cd /root/ai-sdr-agent  # Переход в существующий каталог
     - git pull origin main  # Выполнение git pull из репозитория
     - docker-compose build  # Строим контейнеры с помощью Docker Compose
 
 deploy:
   stage: deploy
   script:
+    - cd /root/ai-sdr-agent  # Переход в существующий каталог
     - docker-compose down  # Останавливаем старые контейнеры
     - docker-compose up -d  # Запускаем новые контейнеры в фоновом режиме
-  only:
-    - main  # Эта стадия выполняется только для ветки main
+
+only:
+  - main  # Эта стадия выполняется только для ветки main

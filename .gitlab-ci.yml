@@ -5,8 +5,7 @@ services:
     entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Переопределяем точку входа для DinD
 
 variables:
-  DOCKER_HOST: tcp://docker:2375/
-  DOCKER_TLS_CERTDIR: ""  # Отключаем TLS для подключения к Docker Daemon
+  DOCKER_HOST: unix:///var/run/docker.sock  # Используем Docker Socket для подключения
 
 stages:
   - build

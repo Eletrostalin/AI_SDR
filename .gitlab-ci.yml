@@ -2,11 +2,12 @@ image: docker:20.10.16
 
 services:
   - name: docker:20.10.16-dind
-    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Переопределяем точку входа
+    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Переопределяем точку входа для DinD
 
 variables:
   DOCKER_HOST: tcp://docker:2375/
-  DOCKER_TLS_CERTDIR: ""
+  DOCKER_TLS_CERTDIR: ""  # Отключаем TLS для подключения к Docker Daemon
+  DOCKER_DRIVER: overlay2  # Это может помочь с производительностью Docker
 
 stages:
   - build
@@ -23,9 +24,6 @@ build:
   script:
     - git pull origin main  # Выполнение git pull из репозитория
     - docker-compose build  # Строим контейнеры с помощью Docker Compose
-  cache:
-    paths:
-      - /root/ai-sdr-agent  # Добавим кеширование для каталога проекта, если нужно
 
 deploy:
   stage: deploy

@@ -2,38 +2,33 @@ image: docker:20.10.16
 
 services:
   - name: docker:20.10.16-dind
-    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Переопределяем точку входа для DinD
+    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Keep DinD running
 
 variables:
-  DOCKER_HOST: unix:///var/run/docker.sock  # Используем сокет Docker на хосте
-  DOCKER_TLS_CERTDIR: ""  # Отключаем TLS для Docker
+  DOCKER_HOST: tcp://docker:2375  # Use TCP for Docker
+  DOCKER_TLS_CERTDIR: ""  # Disable TLS for Docker
+  DOCKER_DRIVER: overlay2  # Use overlay2 as the storage driver
 
 stages:
   - build
   - deploy
 
 before_script:
-  - apk add --no-cache py3-pip
-  - apk add --no-cache docker-compose
-  - apk add --no-cache git
-  - echo "ENV_VARIABLE=value" > .env  # Создание файла .env
+  - apk add --no-cache py3-pip docker-compose git
+  - echo "ENV_VARIABLE=value" > .env  # Create .env file
 
 build:
   stage: build
   script:
-    - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
-    - git pull origin main  # Выполнение git pull из репозитория
-    - docker-compose build  # Строим контейнеры с помощью Docker Compose
-  volumes:
-    - /root/ai-sdr-agent:/builds/ai-sdr-agent  # Монтирование существующего каталога
+    - cd /builds/ai-sdr-agent  # Navigate to the project directory
+    - git pull origin main  # Pull latest changes from the repository
+    - docker-compose build  # Build containers using Docker Compose
 
 deploy:
   stage: deploy
   script:
-    - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
-    - docker-compose down  # Останавливаем старые контейнеры
-    - docker-compose up -d  # Запускаем новые контейнеры в фоновом режиме
-  volumes:
-    - /root/ai-sdr-agent:/builds/ai-sdr-agent  # Монтирование существующего каталога
+    - cd /builds/ai-sdr-agent  # Navigate to the project directory
+    - docker-compose down  # Stop old containers
+    - docker-compose up -d  # Start new containers in detached mode
   only:
-    - main  # Эта стадия выполняется только для ветки main
+    - main  # This stage runs only for the main branch

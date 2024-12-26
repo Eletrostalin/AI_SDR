@@ -21,8 +21,14 @@ before_script:
 build:
   stage: build
   script:
+    # Удаляем папку, если она существует
     - if [ -d "/builds/ai-sdr-agent" ]; then rm -rf /builds/ai-sdr-agent; fi
-    - git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git /builds/ai-sdr-agent || { echo "Failed to clone repository"; exit 1; }
+    
+    # Клонируем репозиторий в временную директорию
+    - git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git /tmp/ai-sdr-agent || { echo "Failed to clone repository"; exit 1; }
+    
+    # Перемещаем клонированную директорию в нужное место
+    - mv /tmp/ai-sdr-agent /builds/ai-sdr-agent
 
 deploy:
   stage: deploy

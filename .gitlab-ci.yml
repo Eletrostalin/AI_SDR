@@ -13,9 +13,7 @@ stages:
 
 before_script:
   - apk add --no-cache py3-pip
-  - pip install wheel
-  - pip install "PyYAML==5.4.1" --no-binary :all:
-  - pip install "docker-compose==1.29.2"
+  - apk add --no-cache docker-compose
 
 build:
   stage: build

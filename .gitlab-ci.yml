@@ -2,8 +2,9 @@ image: docker:20.10.16
 
 services:
   - name: docker:20.10.16-dind
-    entrypoint: [""]
-    # Убираем --privileged и монтирование через volumes/ mount в сервисах
+    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Переопределяем точку входа
+    # Если необходимо, оставьте его пустым для использования дефолтной точки входа
+    # Но убедитесь, что она работает корректно
 
 variables:
   DOCKER_HOST: tcp://docker:2375/

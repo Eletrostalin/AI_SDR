@@ -20,13 +20,19 @@ before_script:
 build:
   stage: build
   script:
-    - cd /root/ai-sdr-agent  # Переход в существующий каталог
+    - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
     - git pull origin main  # Выполнение git pull из локального репозитория
     - docker-compose build
+
+volumes:
+  - /root/ai-sdr-agent:/builds/ai-sdr-agent  # Монтирование существующего каталога
 
 deploy:
   stage: deploy
   script:
-    - cd /root/ai-sdr-agent  # Переход в существующий каталог
+    - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
     - docker-compose down
     - docker-compose up -d
+
+volumes:
+  - /root/ai-sdr-agent:/builds/ai-sdr-agent  # Монтирование существующего каталога

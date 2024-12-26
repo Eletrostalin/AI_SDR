@@ -86,44 +86,4 @@ def extract_company_data(company_text: str) -> dict:
         logger.error(f"Error extracting company data: {e}", exc_info=True)
         return {"error": str(e)}
 
-# async def extract_campaign_data_with_validation(input_text: str, state, message):
-#     """
-#     Извлекает данные о кампании из текста, используя OpenAI, с сохранением частичных данных.
-#     """
-#     try:
-#         # Форматируем промпт
-#         prompt = CREATE_CAMPAIGN_PROMPT.format(input_text=input_text)
-#         logger.debug(f"Formatted campaign prompt: {prompt}")
-#
-#         # Вызываем OpenAI API
-#         response = client.chat.completions.create(
-#             model="gpt-3.5-turbo",
-#             messages=[{"role": "user", "content": prompt}]
-#         )
-#
-#         # Извлекаем и парсим ответ
-#         content = response.choices[0].message.content
-#         logger.debug(f"Campaign data response: {content}")
-#         campaign_data = json.loads(content.strip())
-#
-#         # Проверяем данные
-#         campaign_name = campaign_data.get("campaign_name")
-#         if not campaign_name or campaign_name.strip() == "":
-#             # Если название не извлечено, сохраняем частичные данные и запрашиваем название
-#             logger.warning("Название кампании отсутствует. Запрашиваем у пользователя.")
-#             await state.update_data(partial_campaign_data=campaign_data)
-#             await message.reply("Не удалось определить название кампании. Укажите его.")
-#             await state.set_state(AddCampaignState.waiting_for_campaign_name)
-#             return None
-#
-#         # Возвращаем полные данные
-#         return campaign_data
-#
-#     except json.JSONDecodeError as json_error:
-#         logger.error(f"JSON parsing error: {json_error}", exc_info=True)
-#         await message.reply("Ошибка обработки данных кампании. Попробуйте снова.")
-#         return None
-#     except Exception as e:
-#         logger.error(f"Error extracting campaign data: {e}", exc_info=True)
-#         await message.reply("Произошла ошибка. Пожалуйста, повторите запрос.")
-#         return None
+

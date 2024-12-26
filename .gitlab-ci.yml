@@ -1,4 +1,4 @@
-image: debian:latest
+image: ubuntu:latest
 
 stages:
   - deploy

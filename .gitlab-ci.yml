@@ -3,6 +3,7 @@ image: docker:20.10.16
 services:
   name: docker:20.10.16-dind
 
+  command: ["--privileged"]
 volumes:
   - /root/ai-sdr-agent:/builds/ai-sdr-agent  # Монтирование существующего каталога
 

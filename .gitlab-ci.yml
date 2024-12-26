@@ -1,17 +1,13 @@
+image: debian:latest
+
 stages:
   - deploy
 
 deploy:
   stage: deploy
-  image: debian:latest
+  before_script:
+    - apt-get update && apt-get install -y openssh-client rsync
+
   script:
-    - apt-get update && apt-get install -y rsync
     - echo "Deploying to server..."
     - rsync -avz -e "ssh -o StrictHostKeyChecking=no" --exclude '.git' ./ root@62.217.183.24:/root/ai-sdr-agent
-    - ssh -o StrictHostKeyChecking=no root@62.217.183.24 << 'EOF'
-      cd /root/ai-sdr-agent
-      docker-compose down
-      docker-compose up -d --build
-      EOF
-  only:
-    - main

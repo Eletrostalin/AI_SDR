@@ -14,8 +14,8 @@ stages:
 deploy:
   stage: deploy
   script:
-    - echo "Переходим в каталог /root/ai-sdr-agent"
-    - cd /root/ai-sdr-agent
+    - echo "Переходим в каталог /home/gitlab-runner/ai-sdr-agent"
+    - cd /home/gitlab-runner/ai-sdr-agent
     - echo "Выполняем git pull"
     - git pull || { echo "Не удалось выполнить git pull"; exit 1; }
     - echo "Останавливаем контейнеры"

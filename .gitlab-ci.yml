@@ -14,17 +14,19 @@ stages:
 before_script:
   - apk add --no-cache py3-pip
   - apk add --no-cache docker-compose
-  - apk add --no-cache git  # Добавьте эту строку для установки git
-  - echo "ENV_VARIABLE=value" > .env  # Добавьте эту строку для создания файла .env
+  - apk add --no-cache git
+  - echo "ENV_VARIABLE=value" > .env  # Создание файла .env
 
 build:
   stage: build
   script:
-    - git pull git@62.217.183.24:ai-sdr-agent/ai-sdr-agent.git
+    - cd /root/ai-sdr-agent  # Переход в директорию проекта
+    - git pull origin main  # Выполнение git pull из локального репозитория
     - docker-compose build
 
 deploy:
   stage: deploy
   script:
+    - cd /root/ai-sdr-agent  # Переход в директорию проекта
     - docker-compose down
     - docker-compose up -d

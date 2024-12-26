@@ -20,11 +20,15 @@ before_script:
 build:
   stage: build
   script:
+    - pwd  # Вывод текущей директории
+    - ls -la  # Вывод содержимого текущей директории
     - git pull origin main  # Выполнение git pull из локального репозитория
     - docker-compose build
 
 deploy:
   stage: deploy
   script:
+    - pwd  # Вывод текущей директории
+    - ls -la  # Вывод содержимого текущей директории
     - docker-compose down
     - docker-compose up -d

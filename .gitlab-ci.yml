@@ -1,13 +1,3 @@
-image: docker:20.10.16
-
-services:
-  - name: docker:20.10.16-dind
-    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]
-
-variables:
-  DOCKER_HOST: tcp://docker:2375
-  DOCKER_TLS_CERTDIR: ""
-
 stages:
   - deploy
 
@@ -19,8 +9,8 @@ deploy:
     - echo "Выполняем git pull"
     - git pull || { echo "Не удалось выполнить git pull"; exit 1; }
     - echo "Останавливаем контейнеры"
-    - docker-compose down
+    - docker-compose down || { echo "Не удалось остановить контейнеры"; exit 1; }
     - echo "Запускаем контейнеры с пересборкой"
-    - docker-compose up -d --build
+    - docker-compose up -d --build || { echo "Не удалось запустить контейнеры"; exit 1; }
   only:
     - main  # Замените на вашу ветку, если нужно

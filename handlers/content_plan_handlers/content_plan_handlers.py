@@ -168,12 +168,31 @@ async def confirm_content_plan(message: Message, state: FSMContext):
 
             # Добавляем волны
             for wave in waves:
+                # Проверка и преобразование send_time
+                send_time = wave.get("send_time")
+                if isinstance(send_time, str):
+                    send_time = datetime.strptime(send_time, "%H:%M:%S").time()
+                elif isinstance(send_time, datetime):
+                    send_time = send_time.time()
+                else:
+                    raise ValueError(f"Неподдерживаемый формат времени: {send_time}")
+
+                # Преобразование даты и времени в datetime
+                send_date = wave["send_date"]
+                send_datetime = datetime.strptime(
+                    f"{send_date} {send_time}", "%Y-%m-%d %H:%M:%S"
+                )
+
                 add_wave(
                     db=db,
                     content_plan_id=content_plan.content_plan_id,
                     company_id=campaign.company_id,
                     campaign_id=campaign.campaign_id,
-                    wave=wave
+                    wave={
+                        "send_time": send_datetime,
+                        "send_date": send_date,
+                        "subject": wave["subject"]
+                    }
                 )
 
             db.commit()

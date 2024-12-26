@@ -6,6 +6,7 @@ from handlers.company_handlers.conpany_view_handlers import handle_view_company
 from handlers.company_handlers.company_handlers import handle_edit_company
 from handlers.campaign_handlers.campaign_handlers import handle_add_campaign
 from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
+from handlers.content_plan_handlers.content_plan_view import handle_view_content_plans
 from handlers.email_table_handler import handle_email_table_request, handle_view_email_table
 from handlers.tamplate_handlers.tamplate_handler import start_template_creation
 from logger import logger
@@ -74,6 +75,8 @@ async def dispatch_classification(classification: dict, message: Message, state:
                 await handle_email_table_request(message, state)
             elif action_type == "view" and entity_type == "email_table":
                 await handle_view_email_table(message, state)
+            elif action_type == "view" and entity_type == "content_plan":
+                await handle_view_content_plans(message, state)
             else:
                 logger.warning(f"Не удалось обработать запрос: {classification}")
                 await message.reply("К сожалению, я не могу обработать ваш запрос. Попробуйте снова.")

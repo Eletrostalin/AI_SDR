@@ -1,19 +1,3 @@
-CREATE TABLE users (
-    user_id SERIAL PRIMARY KEY,
-    telegram_id VARCHAR(255) NOT NULL UNIQUE,
-    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    company_id INTEGER REFERENCES companies(company_id) ON DELETE SET NULL,
-    name VARCHAR(255)
-);
-
-CREATE TABLE chat_threads (
-    id SERIAL PRIMARY KEY,
-    chat_id BIGINT NOT NULL,
-    thread_id BIGINT NOT NULL,
-    thread_name VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-);
-
 CREATE TABLE companies (
     company_id SERIAL PRIMARY KEY,
     chat_id VARCHAR(255) NOT NULL UNIQUE,
@@ -36,6 +20,22 @@ CREATE TABLE company_info (
     updated_at TIMESTAMP
 );
 
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    telegram_id VARCHAR(255) NOT NULL UNIQUE,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    company_id INTEGER REFERENCES companies(company_id) ON DELETE SET NULL,
+    name VARCHAR(255)
+);
+
+CREATE TABLE chat_threads (
+    id SERIAL PRIMARY KEY,
+    chat_id BIGINT NOT NULL,
+    thread_id BIGINT NOT NULL UNIQUE,
+    thread_name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
 CREATE TABLE campaigns (
     campaign_id SERIAL PRIMARY KEY,
     company_id INTEGER REFERENCES companies(company_id) ON DELETE CASCADE NOT NULL,
@@ -54,9 +54,20 @@ CREATE TABLE content_plans (
     content_plan_id SERIAL PRIMARY KEY,
     company_id INTEGER REFERENCES companies(company_id) ON DELETE CASCADE NOT NULL,
     telegram_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW();
     wave_count INTEGER DEFAULT 0 NOT NULL,
     description TEXT,
     campaign_id INTEGER REFERENCES campaigns(campaign_id) ON DELETE CASCADE NOT NULL
+);
+
+CREATE TABLE templates (
+    template_id SERIAL PRIMARY KEY,
+    company_id INTEGER REFERENCES companies(company_id) ON DELETE CASCADE NOT NULL,
+    campaign_id INTEGER REFERENCES campaigns(campaign_id) ON DELETE CASCADE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    user_request TEXT NOT NULL,
+    template_content TEXT NOT NULL
 );
 
 CREATE TABLE waves (
@@ -68,14 +79,4 @@ CREATE TABLE waves (
     send_date TIMESTAMP NOT NULL,
     subject VARCHAR(255) NOT NULL,
     template_id INTEGER REFERENCES templates(template_id) ON DELETE SET NULL
-);
-
-CREATE TABLE templates (
-    template_id SERIAL PRIMARY KEY,
-    company_id INTEGER REFERENCES companies(company_id) ON DELETE CASCADE NOT NULL,
-    campaign_id INTEGER REFERENCES campaigns(campaign_id) ON DELETE CASCADE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    subject VARCHAR(255) NOT NULL,
-    user_request TEXT NOT NULL,
-    template_content TEXT NOT NULL
 );

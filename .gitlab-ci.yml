@@ -8,21 +8,22 @@ before_script:
   - apk add --no-cache py3-pip
   - apk add --no-cache docker-compose
   - apk add --no-cache git
-  - echo "ENV_VARIABLE=value" > .env  # Создание файла .env
+  - echo "ENV_VARIABLE=value" > .env  # Create .env file
 
 build:
   stage: build
   script:
-    - cd /root/ai-sdr-agent  # Переход в существующий каталог
-    - git pull origin main  # Выполнение git pull из репозитория
-    - docker-compose build  # Строим контейнеры с помощью Docker Compose
+    - cd /root/ai-sdr-agent  # Change to the existing directory
+    - git pull origin main  # Perform git pull from the repository
+    - docker-compose build  # Build containers using Docker Compose
+  only:
+    - main  # This job runs only for the main branch
 
 deploy:
   stage: deploy
   script:
-    - cd /root/ai-sdr-agent  # Переход в существующий каталог
-    - docker-compose down  # Останавливаем старые контейнеры
-    - docker-compose up -d  # Запускаем новые контейнеры в фоновом режиме
-
-only:
-  - main  # Эта стадия выполняется только для ветки main
+    - cd /root/ai-sdr-agent  # Change to the existing directory
+    - docker-compose down  # Stop old containers
+    - docker-compose up -d  # Start new containers in detached mode
+  only:
+    - main  # This job runs only for the main branch

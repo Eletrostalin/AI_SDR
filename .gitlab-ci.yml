@@ -2,11 +2,11 @@ image: docker:20.10.16
 
 services:
   - name: docker:20.10.16-dind
-    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Переопределяем точку входа для DinD
+    entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]
 
 variables:
-  DOCKER_HOST: tcp://docker:2375  # Используем TCP для Docker
-  DOCKER_TLS_CERTDIR: ""  # Отключаем TLS для Docker
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
 
 stages:
   - build
@@ -16,20 +16,18 @@ before_script:
   - apk add --no-cache py3-pip
   - apk add --no-cache docker-compose
   - apk add --no-cache git
-  - echo "ENV_VARIABLE=value" > .env  # Создание файла .env
+  - echo "ENV_VARIABLE=value" > .env
 
 build:
   stage: build
   script:
-    - if [ ! -d "/builds/ai-sdr-agent/.git" ]; then git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git /builds/ai-sdr-agent; else cd /builds/ai-sdr-agent && git pull origin main; fi  # Клонирование или обновление репозитория
-    - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
-    - docker-compose build  # Строим контейнеры с помощью Docker Compose
+    - if [ ! -d "/builds/ai-sdr-agent/.git" ]; then git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git /builds/ai-sdr-agent; else git -C /builds/ai-sdr-agent pull origin main; fi
 
 deploy:
   stage: deploy
   script:
-    - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
-    - docker-compose down  # Останавливаем старые контейнеры
-    - docker-compose up -d  # Запускаем новые контейнеры в фоновом режиме
+    - cd /builds/ai-sdr-agent
+    - docker-compose down
+    - docker-compose up -d
   only:
-    - main  # Эта стадия выполняется только для ветки main
+    - main

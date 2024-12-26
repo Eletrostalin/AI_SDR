@@ -1,7 +1,10 @@
 image: docker:20.10.16
 
 services:
-  - docker:20.10.16-dind
+  name: docker:20.10.16-dind
+
+volumes:
+  - /root/ai-sdr-agent:/builds/ai-sdr-agent  # Монтирование существующего каталога
 
 variables:
   DOCKER_HOST: tcp://docker:2375/
@@ -24,15 +27,9 @@ build:
     - git pull origin main  # Выполнение git pull из локального репозитория
     - docker-compose build
 
-volumes:
-  - /root/ai-sdr-agent:/builds/ai-sdr-agent  # Монтирование существующего каталога
-
 deploy:
   stage: deploy
   script:
     - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
     - docker-compose down
     - docker-compose up -d
-
-volumes:
-  - /root/ai-sdr-agent:/builds/ai-sdr-agent  # Монтирование существующего каталога

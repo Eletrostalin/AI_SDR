@@ -5,8 +5,8 @@ services:
     entrypoint: ["/bin/sh", "-c", "while :; do sleep 1; done"]  # Переопределяем точку входа для DinD
 
 variables:
-  DOCKER_HOST: unix:///var/run/docker.sock  # Указываем использование Docker через сокет
-  DOCKER_TLS_CERTDIR: ""  # Отключаем использование TLS для подключения к Docker
+  DOCKER_HOST: unix:///var/run/docker.sock  # Используем сокет Docker на хосте
+  DOCKER_TLS_CERTDIR: ""  # Отключаем TLS для Docker
 
 stages:
   - build
@@ -31,6 +31,3 @@ deploy:
     - docker-compose up -d  # Запускаем новые контейнеры в фоновом режиме
   only:
     - main  # Эта стадия выполняется только для ветки main
-
-# Монтирование Docker Socket для доступа к Docker на хосте
-# Этот блок следует разместить в секции `before_script` или `script`, а не в `docker`

@@ -1,0 +1,15 @@
+stages:
+  - deploy
+
+deploy:
+  stage: deploy
+  script:
+    - echo "Deploying to server..."
+    - rsync -avz -e "ssh -o StrictHostKeyChecking=no" --exclude '.git' ./ root@62.217.183.24:/root/ai-sdr-agent
+    - ssh -o StrictHostKeyChecking=no root@62.217.183.24 << 'EOF'
+      cd /root/ai-sdr-agent
+      docker-compose down
+      docker-compose up -d --build
+      EOF
+  only:
+    - main

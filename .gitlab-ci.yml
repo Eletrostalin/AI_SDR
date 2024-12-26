@@ -20,13 +20,11 @@ before_script:
 build:
   stage: build
   script:
-    - cd /root/ai-sdr-agent  # Переход в директорию проекта
     - git pull origin main  # Выполнение git pull из локального репозитория
     - docker-compose build
 
 deploy:
   stage: deploy
   script:
-    - cd /root/ai-sdr-agent  # Переход в директорию проекта
     - docker-compose down
     - docker-compose up -d

@@ -21,7 +21,7 @@ before_script:
 build:
   stage: build
   script:
-    - if [ ! -d "/builds/ai-sdr-agent/.git" ]; then git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git /builds/ai-sdr-agent; else git -C /builds/ai-sdr-agent pull origin main; fi
+    - if [ ! -d "/builds/ai-sdr-agent/.git" ]; then git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git /builds/ai-sdr-agent; elif [ -d "/builds/ai-sdr-agent/.git" ]; then git -C /builds/ai-sdr-agent pull origin main; else echo "Directory exists but is not a git repository."; exit 1; fi
 
 deploy:
   stage: deploy

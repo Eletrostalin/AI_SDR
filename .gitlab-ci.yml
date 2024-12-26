@@ -9,28 +9,18 @@ variables:
   DOCKER_TLS_CERTDIR: ""
 
 stages:
-  - build
   - deploy
-
-before_script:
-  - apk add --no-cache py3-pip
-  - apk add --no-cache docker-compose
-  - apk add --no-cache git
-  - echo "ENV_VARIABLE=value" > .env
-
-build:
-  stage: build
-  script:
-    - cd /builds
-    - if [ -d "ai-sdr-agent" ]; then rm -rf ai-sdr-agent; fi
-    - echo "Текущая директория перед клонированием: $(pwd)"
-    - git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git ai-sdr-agent || { echo "Не удалось клонировать репозиторий"; exit 1; }
 
 deploy:
   stage: deploy
   script:
-    - cd /builds/ai-sdr-agent
+    - echo "Переходим в каталог /root/ai-sdr-agent"
+    - cd /root/ai-sdr-agent
+    - echo "Выполняем git pull"
+    - git pull || { echo "Не удалось выполнить git pull"; exit 1; }
+    - echo "Останавливаем контейнеры"
     - docker-compose down
-    - docker-compose up -d
+    - echo "Запускаем контейнеры с пересборкой"
+    - docker-compose up -d --build
   only:
-    - main
+    - main  # Замените на вашу ветку, если нужно

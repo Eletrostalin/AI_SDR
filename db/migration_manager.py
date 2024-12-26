@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text
 
 
-DATABASE_URL="postgresql+psycopg://postgres:13579033@localhost:5432/AI_SDR_stage"
+DATABASE_URL="postgresql+psycopg://postgres:13579033@localhost:5433/AI_SDR_stage"
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 # Настройка фабрики для создания асинхронных сессий

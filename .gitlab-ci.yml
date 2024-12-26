@@ -21,9 +21,8 @@ before_script:
 build:
   stage: build
   script:
-    - if [ ! -d "/builds/ai-sdr-agent/.git" ]; then git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git /builds/ai-sdr-agent; fi  # Клонирование репозитория, если он не существует
+    - if [ ! -d "/builds/ai-sdr-agent/.git" ]; then git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git /builds/ai-sdr-agent; else cd /builds/ai-sdr-agent && git pull origin main; fi  # Клонирование или обновление репозитория
     - cd /builds/ai-sdr-agent  # Переход в каталог внутри контейнера
-    - git pull origin main  # Выполнение git pull из репозитория
     - docker-compose build  # Строим контейнеры с помощью Docker Compose
 
 deploy:

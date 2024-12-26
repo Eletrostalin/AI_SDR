@@ -14,4 +14,4 @@ deploy:
 
   script:
     - echo "Deploying to server..."
-    - rsync -avz -e "ssh -o StrictHostKeyChecking=no" --exclude '.git' ./ root@62.217.183.24
+    - rsync -avz -e "ssh -o StrictHostKeyChecking=no" --exclude '.git' ./ root@62.217.183.24:/root/ai-sdr-agent

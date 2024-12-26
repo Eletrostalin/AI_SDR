@@ -30,3 +30,8 @@ deploy:
     - docker-compose up -d  # Запускаем новые контейнеры в фоновом режиме
   only:
     - main  # Эта стадия выполняется только для ветки main
+
+# Добавляем монтирование Docker Socket для доступа к Docker на хосте
+docker:
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock  # Монтируем Docker Socket

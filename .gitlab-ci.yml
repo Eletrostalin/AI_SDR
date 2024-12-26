@@ -21,16 +21,9 @@ before_script:
 build:
   stage: build
   script:
-    # Переход в рабочую директорию
     - cd /builds
-    
-    # Удаление папки, если она существует
     - if [ -d "ai-sdr-agent" ]; then rm -rf ai-sdr-agent; fi
-    
-    # Проверка текущей директории
     - echo "Current directory before clone: $(pwd)"
-    
-    # Клонирование репозитория в новую директорию
     - git clone http://62.217.183.24/ai-sdr-agent/ai-sdr-agent.git ai-sdr-agent || { echo "Failed to clone repository"; exit 1; }
 
 deploy:

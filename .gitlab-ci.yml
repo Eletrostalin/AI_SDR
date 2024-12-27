@@ -12,7 +12,6 @@ deploy:
     - echo "Останавливаем контейнеры"
     - docker-compose down || { echo "Не удалось остановить контейнеры"; exit 1; }
     - echo "Запускаем контейнеры с пересборкой"
-    - docker-compose --build || { echo "Не удалось запустить контейнеры"; exit 1; }
-    - docker-compose up
+    - docker-compose up --build || { echo "Не удалось запустить контейнеры"; exit 1; }
   only:
     - main  # №Замените на вашу ветку, если нужно

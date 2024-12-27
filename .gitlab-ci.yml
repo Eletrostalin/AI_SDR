@@ -4,7 +4,7 @@ stages:
 deploy:
   stage: deploy
   script:
-    #- echo1111 "Переходим в каталог /home/gitlab-runner/ai-sdr-agent"
+    #- "Переходим в каталог /home/gitlab-runner/ai-sdr-agent"
     - git config --global --add safe.directory /home/gitlab-runner/ai-sdr-agent
     - cd /home/gitlab-runner/ai-sdr-agent
     - echo "Выполняем git pull"

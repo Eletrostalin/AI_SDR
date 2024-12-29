@@ -10,15 +10,7 @@ from handlers.content_plan_handlers.content_plan_handlers import (
 )
 
 # Импорты обработчиков для онбординга
-from handlers.onboarding_handler import (
-    handle_company_name,
-    handle_industry,
-    handle_region,
-    handle_contact_email,
-    handle_contact_phone,
-    handle_additional_details,
-    handle_confirmation
-)
+
 
 # Импорты обработчиков для редактирования компании
 from handlers.company_handlers.company_handlers import (
@@ -37,7 +29,7 @@ from handlers.campaign_handlers.campaign_handlers import (
 )
 
 # Импорты для работы с email таблицами
-from handlers.email_table_handler import handle_file_upload
+from handlers.email_table_handler import handle_file_upload, logger
 from handlers.tamplate_handlers.tamplate_handler import confirm_template, generate_template, handle_subject
 
 # Импорт состояний
@@ -49,29 +41,7 @@ from states.states import (
     AddContentPlanState, TemplateStates,
 )
 
-# Логгер
-from logger import logger
 
-
-
-async def handle_onboarding_states(message: Message, state: FSMContext, current_state: str):
-    """
-    Обрабатывает состояния онбординга.
-    """
-    if current_state == OnboardingState.waiting_for_company_name.state:
-        await handle_company_name(message, state)
-    elif current_state == OnboardingState.waiting_for_industry.state:
-        await handle_industry(message, state)
-    elif current_state == OnboardingState.waiting_for_region.state:
-        await handle_region(message, state)
-    elif current_state == OnboardingState.waiting_for_contact_email.state:
-        await handle_contact_email(message, state)
-    elif current_state == OnboardingState.waiting_for_contact_phone.state:
-        await handle_contact_phone(message, state)
-    elif current_state == OnboardingState.waiting_for_additional_details.state:
-        await handle_additional_details(message, state)
-    elif current_state == OnboardingState.confirmation.state:
-        await handle_confirmation(message, state)
 
 async def handle_add_email_segmentation_states(message: Message, state: FSMContext, current_state: str):
     """

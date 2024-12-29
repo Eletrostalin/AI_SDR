@@ -7,13 +7,8 @@ class OnboardingState(StatesGroup):
     """
     Состояния для процесса онбординга.
     """
-    waiting_for_company_name = State()  # Ожидание ввода названия компании
-    waiting_for_industry = State()      # Ожидание ввода сферы деятельности
-    waiting_for_region = State()        # Ожидание ввода региона
-    waiting_for_contact_email = State() # Ожидание ввода email
-    waiting_for_contact_phone = State() # Ожидание ввода контактного телефона
-    waiting_for_additional_details = State()  # Ожидание ввода дополнительных данных
-    confirmation = State()              # Подтверждение данных
+    waiting_for_responce = State()  # Ожидание ввода названия компании
+
 
 class AddCompanyState(StatesGroup):
     waiting_for_information = State()

@@ -1,14 +1,16 @@
 from aiogram import Bot, Router
+from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from langchain.prompts import PromptTemplate
-from langchain.agents import AgentExecutor, Tool
-from langchain.memory import ConversationBufferMemory
-from langchain.chat_models import ChatOpenAI
-from db.db import SessionLocal
-from db.models import CompanyInfo
 from aiogram.types import Message
+from langchain.agents import Tool, create_structured_chat_agent
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_openai import ChatOpenAI
+import json
 import logging
 
+from db.db import SessionLocal
+from db.models import CompanyInfo
 from states.states import OnboardingState
 
 router = Router()
@@ -16,9 +18,6 @@ logger = logging.getLogger(__name__)
 
 # Инструменты для агента
 def get_onboarding_tools():
-    """
-    Определяем инструменты для сбора информации о компании.
-    """
     def validate_email(input_text):
         import re
         return re.match(r"[^@]+@[^@]+\.[^@]+", input_text)
@@ -30,150 +29,141 @@ def get_onboarding_tools():
     tools = [
         Tool(
             name="company_name",
-            func=lambda input_text: input_text.strip(),
-            description="Собрать название компании."
+            func=lambda x: x.strip(),
+            description="Скажите, как называется ваша компания."
         ),
         Tool(
             name="industry",
-            func=lambda input_text: input_text.strip(),
-            description="Собрать сферу деятельности компании."
+            func=lambda x: x.strip(),
+            description="В какой сфере работает ваша компания?"
         ),
         Tool(
             name="region",
-            func=lambda input_text: input_text.strip(),
-            description="Собрать регион компании."
+            func=lambda x: x.strip(),
+            description="Укажите регион, в котором работает компания."
         ),
         Tool(
             name="contact_email",
-            func=lambda input_text: input_text.strip() if validate_email(input_text) else "Некорректный email.",
-            description="Собрать контактный email компании."
+            func=lambda x: x.strip() if validate_email(x) else "Некорректный email.",
+            description="Какой email лучше использовать для связи?"
         ),
         Tool(
             name="contact_phone",
-            func=lambda input_text: input_text.strip() if validate_phone(input_text) else "Некорректный номер телефона.",
-            description="Собрать контактный телефон компании."
+            func=lambda x: x.strip() if validate_phone(x) else "Некорректный номер телефона.",
+            description="Укажите контактный телефон компании."
         ),
         Tool(
             name="additional_info",
-            func=lambda input_text: input_text.strip() if input_text else "Пропустить",
-            description="Собрать дополнительные данные о компании."
+            func=lambda x: x.strip() if x else "Пропустить.",
+            description="Есть ли дополнительные данные, которые вы хотели бы указать?"
         ),
     ]
     return tools
 
-# Создаем агента LangChain
 def create_onboarding_agent():
     """
-    Создает агента для онбординга с LangChain.
+    Создает агента для онбординга с использованием LangChain.
     """
-    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.7)
     tools = get_onboarding_tools()
 
-    prompt = PromptTemplate(
-        input_variables=["chat_history", "input"],
-        template=(
-            "Ты помощник для сбора информации о компании. Используй доступные инструменты "
-            "для уточнения данных. Если данные уже собраны, уточни оставшиеся.\n"
-            "{chat_history}\n\n"
-            "Входящее сообщение: {input}\n"
-        )
-    )
+    # Генерируем описание инструментов
+    tools_description = "\n".join([f"- {tool.name}: {tool.description}" for tool in tools])
 
-    return AgentExecutor.from_agent_and_tools(
-        agent="zero-shot-react-description",
-        tools=tools,
+    system_prompt = f"""
+Вы виртуальный ассистент, который помогает компаниям пройти процесс онбординга. 
+Ваша задача — извлечь из текста пользователя данные по следующим категориям:
+- Название компании (company_name)
+- Сфера деятельности (industry)
+- Регион (region)
+- Контактный email (contact_email)
+- Контактный телефон (contact_phone)
+- Дополнительная информация (additional_info)
+
+Вы можете использовать инструменты для извлечения данных. Доступные инструменты:
+{tools_description}
+
+Инструменты принимают входные данные в формате JSON с ключами:
+- "action": имя инструмента
+- "action_input": входные данные для инструмента.
+
+Если информация не найдена, задайте уточняющий вопрос пользователю. Используйте вежливые формулировки.
+
+Пример вызова инструмента:
+{{
+  "action": "company_name",
+  "action_input": "Коннектед"
+}}
+
+Отвечайте четко, учтиво, и используйте инструменты только при необходимости.
+"""
+
+    # Создаем шаблон промпта
+    prompt = ChatPromptTemplate.from_messages([
+        SystemMessage(content=system_prompt),
+        MessagesPlaceholder(variable_name="chat_history"),
+        MessagesPlaceholder(variable_name="agent_scratchpad"),  # Добавлено для учета scratchpad
+    ])
+
+    # Создаем агента
+    return create_structured_chat_agent(
         llm=llm,
-        memory=memory,
-        verbose=True,
-        prompt=prompt,
+        tools=tools,
+        prompt=prompt
     )
 
-@router.message(state=OnboardingState.waiting_for_first_response)
-async def handle_first_response(message: Message, state: FSMContext, bot: Bot):
+# Обработчик состояния
+@router.message(StateFilter(OnboardingState.waiting_for_first_response))
+async def handle_onboarding_message(message: Message, state: FSMContext, bot: Bot):
     """
-    Обрабатывает первый ответ пользователя после приветственного сообщения.
+    Обрабатывает сообщение пользователя и заполняет данные.
     """
     try:
         chat_id = message.chat.id
-        text = message.text  # Ответ пользователя
+        text = message.text
 
-        # Передаем текст в онбординг-агент
-        await handle_onboarding_with_agent(chat_id=chat_id, text=text, bot=bot)
-
-        # Сбрасываем состояние
-        await state.clear()
-
-    except Exception as e:
-        logger.error(f"Ошибка обработки первого ответа: {e}", exc_info=True)
-        await message.reply("Произошла ошибка при обработке вашего ответа. Попробуйте снова.")
-
-# Обработчик для онбординга
-async def handle_onboarding_with_agent(chat_id: int, text: str, bot: Bot):
-    """
-    Управление онбордингом с помощью агента LangChain, с передачей параметров напрямую.
-    """
-    db = SessionLocal()
-    try:
+        # Создаем агента
         agent = create_onboarding_agent()
 
-        # Загружаем предыдущие данные (если есть)
-        company_data = db.query(CompanyInfo).filter_by(chat_id=str(chat_id)).first()
-        collected_data = {
-            "company_name": company_data.company_name if company_data else None,
-            "industry": company_data.industry if company_data else None,
-            "region": company_data.region if company_data else None,
-            "contact_email": company_data.contact_email if company_data else None,
-            "contact_phone": company_data.contact_phone if company_data else None,
-            "additional_info": company_data.additional_info if company_data else None,
-        }
+        # Получаем сохраненные данные
+        collected_data = await state.get_data()
+        required_fields = [
+            "company_name", "industry", "region", "contact_email", "contact_phone", "additional_info"
+        ]
 
-        # Проверяем, какие данные отсутствуют
-        incomplete_fields = [key for key, value in collected_data.items() if not value]
-
-        # Если все данные собраны
-        if not incomplete_fields:
-            await bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    "Все данные собраны:\n"
-                    f"📌 Название компании: {collected_data['company_name']}\n"
-                    f"📌 Сфера деятельности: {collected_data['industry']}\n"
-                    f"📌 Регион: {collected_data['region']}\n"
-                    f"📌 Email: {collected_data['contact_email']}\n"
-                    f"📌 Телефон: {collected_data['contact_phone']}\n"
-                    f"📌 Дополнительно: {collected_data['additional_info']}\n\n"
-                    "Если хотите обновить данные, отправьте новые значения."
-                )
-            )
-            return
-
-        # Если есть недостающие данные
-        result = agent.run(input=text)
+        # Вызываем агента
+        response = agent.invoke({"input": text})
 
         # Логируем результат
-        logger.info(f"Агент собрал данные: {result}")
+        logger.info(f"Ответ агента: {response}")
 
-        # Сохраняем данные
-        for field, value in result.items():
-            if field in collected_data:
-                collected_data[field] = value
+        # Извлекаем данные из ответа
+        for message_data in response["messages"]:
+            if isinstance(message_data, dict) and message_data.get("content"):
+                try:
+                    result = json.loads(message_data["content"])
+                    field = result.get("action")
+                    value = result.get("action_input")
+                    if field in required_fields:
+                        collected_data[field] = value
+                except json.JSONDecodeError:
+                    logger.error("Ошибка декодирования JSON из ответа инструмента.")
 
-        # Обновляем или создаем запись в базе
-        if company_data:
-            for field, value in collected_data.items():
-                setattr(company_data, field, value)
+        # Проверяем, какие данные отсутствуют
+        incomplete_fields = [field for field in required_fields if not collected_data.get(field)]
+
+        if not incomplete_fields:
+            # Все данные собраны
+            summary = "\n".join([f"{key}: {value}" for key, value in collected_data.items()])
+            await bot.send_message(chat_id, f"Все данные успешно собраны:\n{summary}")
+            await state.clear()
         else:
-            company_data = CompanyInfo(chat_id=str(chat_id), **collected_data)
-            db.add(company_data)
-
-        db.commit()
-
-        # Уведомляем пользователя
-        await bot.send_message(chat_id=chat_id, text=f"Данные обновлены: {result}")
+            # Уточняем недостающие данные
+            for field in incomplete_fields:
+                description = next((tool.description for tool in get_onboarding_tools() if tool.name == field), field)
+                await bot.send_message(chat_id, f"Пожалуйста, уточните: {description}")
+            await state.update_data(**collected_data)
 
     except Exception as e:
-        logger.error(f"Ошибка онбординга: {e}", exc_info=True)
-        await bot.send_message(chat_id=chat_id, text="Произошла ошибка. Попробуйте снова.")
-    finally:
-        db.close()
+        logger.error(f"Ошибка обработки сообщения: {e}", exc_info=True)
+        await bot.send_message(chat_id, "Произошла ошибка. Попробуйте еще раз.")

@@ -9,11 +9,11 @@ from db.db import SessionLocal
 from db.db_auth import create_or_get_company_and_user
 from db.models import Company
 from dispatcher import dispatch_classification
-from handlers.onboarding_handler import handle_onboarding_with_agent
 from states.states import OnboardingState
 from logger import logger
 from states.states_handlers import handle_edit_company_states, handle_add_campaign_states, \
-    handle_add_content_plan_states, handle_add_email_segmentation_states, handle_template_states
+    handle_add_content_plan_states, handle_add_email_segmentation_states, handle_template_states, \
+    handle_onboarding_states
 
 router = Router()
 
@@ -91,18 +91,29 @@ async def greet_new_user(event: ChatMemberUpdated | dict, state: FSMContext):
                 # Проверяем существование компании
                 existing_company = db.query(Company).filter_by(chat_id=str(chat_id)).first()
 
-                if not existing_company:
-                    logger.debug(f"Компания для чата {chat_id} не найдена. Запускаем онбординг.")
+                # Создаём или получаем компанию и пользователя
+                user = create_or_get_company_and_user(db, telegram_user, chat_id)
 
-                    # Устанавливаем состояние ожидания первого ответа
-                    await state.set_state(OnboardingState.waiting_for_first_response)
+                if not existing_company:
+                    logger.debug(f"Компания для чата {chat_id} не найдена. Устанавливаем онбординг.")
+
+                    # Сохраняем company_id в хранилище
+                    storage_key = StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id)
+                    await state.storage.set_state(
+                        key=storage_key,
+                        state=OnboardingState.waiting_for_first_response
+                    )
+                    await state.storage.set_data(
+                        key=storage_key,
+                        data={"company_id": user.company_id}
+                    )
 
                     # Отправляем приветственное сообщение
                     await bot.send_message(
                         chat_id=chat_id,
                         text=(
                             f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
-                            "Пожалуйста, расскажите о вашей компании. Напишите её название и другую информацию."
+                            "Давайте начнем с базовой информации.\nВведите название вашей компании."
                         )
                     )
                 else:
@@ -181,6 +192,8 @@ async def handle_message(message: Message, state: FSMContext):
         await handle_add_content_plan_states(message, state, current_state)
     elif current_state.startswith("AddEmailSegmentationState:"):
         await handle_add_email_segmentation_states(message, state, current_state)
+    elif current_state.startswith("OnboardingState:"):  # Добавлена обработка состояния Onboarding
+        await handle_onboarding_states(message, state, current_state)
     elif current_state.startswith("TemplateStates:"):  # Новая ветка для создания шаблонов
         await handle_template_states(message, state, current_state)
     else:

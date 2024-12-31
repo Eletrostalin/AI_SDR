@@ -7,7 +7,8 @@ class OnboardingState(StatesGroup):
     """
     Состояния для процесса онбординга.
     """
-    waiting_for_responce = State()  # Ожидание ввода названия компании
+    waiting_for_first_response = State()  # Ожидание ввода названия компании
+    waiting_for_response = State()
 
 
 class AddCompanyState(StatesGroup):

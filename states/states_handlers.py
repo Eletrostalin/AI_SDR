@@ -30,6 +30,7 @@ from handlers.campaign_handlers.campaign_handlers import (
 
 # Импорты для работы с email таблицами
 from handlers.email_table_handler import handle_file_upload, logger
+from handlers.onboarding_handler import handle_first_response
 from handlers.tamplate_handlers.tamplate_handler import confirm_template, generate_template, handle_subject
 
 # Импорт состояний
@@ -121,3 +122,22 @@ async def handle_template_states(message: Message, state: FSMContext, current_st
         await handle_subject(message, state)
     elif current_state == TemplateStates.waiting_for_confirmation.state:
         await confirm_template(message, state)
+
+
+async def handle_onboarding_states(message: Message, state: FSMContext, current_state: str):
+    """
+    Обработка состояний для онбординга.
+    """
+    bot = message.bot  # Убедитесь, что бот доступен из контекста сообщения
+
+    if current_state == "OnboardingState:waiting_for_first_response":
+        # Передаем управление обработчику первого ответа
+        await handle_first_response(message, state, bot)
+    elif current_state == "OnboardingState:waiting_for_respons":
+        await handle_first_response(message, state, bot)
+    else:
+        # Логируем неизвестное состояние
+        logger.warning(f"Неизвестное состояние онбординга: {current_state}.")
+        await message.reply(
+            "Произошла ошибка при обработке вашего состояния. Попробуйте снова или обратитесь в поддержку."
+        )

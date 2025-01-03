@@ -1,169 +1,210 @@
-from aiogram import Bot, Router
-from aiogram.filters import StateFilter
-from aiogram.fsm.context import FSMContext
+from aiogram import Router
 from aiogram.types import Message
-from langchain.agents import Tool, create_structured_chat_agent
-from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from aiogram.fsm.context import FSMContext
+from sqlalchemy.orm import Session
+
+from config import OPENAI_API_KEY
+from db.db import SessionLocal
+from db.models import CompanyInfo
+from states.states import OnboardingState
+from langchain.agents import Tool
+from langchain.chains import LLMChain
+from langchain.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 import json
 import logging
 
-from db.db import SessionLocal
-from db.models import CompanyInfo
-from states.states import OnboardingState
-
-router = Router()
 logger = logging.getLogger(__name__)
+router = Router()
 
-# Инструменты для агента
-def get_onboarding_tools():
-    def validate_email(input_text):
-        import re
-        return re.match(r"[^@]+@[^@]+\.[^@]+", input_text)
 
-    def validate_phone(input_text):
-        import re
-        return re.match(r"^\+?[0-9\s\-\(\)]+$", input_text)
+llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, temperature=0.7)
 
-    tools = [
-        Tool(
-            name="company_name",
-            func=lambda x: x.strip(),
-            description="Скажите, как называется ваша компания."
-        ),
-        Tool(
-            name="industry",
-            func=lambda x: x.strip(),
-            description="В какой сфере работает ваша компания?"
-        ),
-        Tool(
-            name="region",
-            func=lambda x: x.strip(),
-            description="Укажите регион, в котором работает компания."
-        ),
-        Tool(
-            name="contact_email",
-            func=lambda x: x.strip() if validate_email(x) else "Некорректный email.",
-            description="Какой email лучше использовать для связи?"
-        ),
-        Tool(
-            name="contact_phone",
-            func=lambda x: x.strip() if validate_phone(x) else "Некорректный номер телефона.",
-            description="Укажите контактный телефон компании."
-        ),
-        Tool(
-            name="additional_info",
-            func=lambda x: x.strip() if x else "Пропустить.",
-            description="Есть ли дополнительные данные, которые вы хотели бы указать?"
-        ),
-    ]
-    return tools
+# Инструмент для извлечения сущностей
+extractor_prompt = ChatPromptTemplate.from_template("""
+Извлеки следующую информацию из текста:
+1. Название компании
+2. Отрасль/сфера деятельности
+3. Регион/география работы
+4. Основной email
+5. Контактный телефон
+6. Дополнительная информация
 
-def create_onboarding_agent():
-    """
-    Создает агента для онбординга с использованием LangChain.
-    """
-    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.7)
-    tools = get_onboarding_tools()
+Текст: {input}
 
-    # Генерируем описание инструментов
-    tools_description = "\n".join([f"- {tool.name}: {tool.description}" for tool in tools])
-
-    system_prompt = f"""
-Вы виртуальный ассистент, который помогает компаниям пройти процесс онбординга. 
-Ваша задача — извлечь из текста пользователя данные по следующим категориям:
-- Название компании (company_name)
-- Сфера деятельности (industry)
-- Регион (region)
-- Контактный email (contact_email)
-- Контактный телефон (contact_phone)
-- Дополнительная информация (additional_info)
-
-Вы можете использовать инструменты для извлечения данных. Доступные инструменты:
-{tools_description}
-
-Инструменты принимают входные данные в формате JSON с ключами:
-- "action": имя инструмента
-- "action_input": входные данные для инструмента.
-
-Если информация не найдена, задайте уточняющий вопрос пользователю. Используйте вежливые формулировки.
-
-Пример вызова инструмента:
+Ответь в формате JSON:
 {{
-  "action": "company_name",
-  "action_input": "Коннектед"
+    "company_name": "Название компании",
+    "industry": "Отрасль/сфера деятельности",
+    "region": null,
+    "contact_email": null,
+    "contact_phone": null,
+    "additional_info": null
 }}
 
-Отвечайте четко, учтиво, и используйте инструменты только при необходимости.
-"""
+Если информация отсутствует, заполни поле значением `null`.
+Не додумывай данные и не делай предположений.
+""")
+extractor_chain = LLMChain(llm=llm, prompt=extractor_prompt)
+extractor_tool = Tool(name="Extractor", func=extractor_chain.run, description="Извлекает сущности из текста")
 
-    # Создаем шаблон промпта
-    prompt = ChatPromptTemplate.from_messages([
-        SystemMessage(content=system_prompt),
-        MessagesPlaceholder(variable_name="chat_history"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),  # Добавлено для учета scratchpad
-    ])
+# Инструмент для первого запроса
+first_question_prompt = ChatPromptTemplate.from_template("""
+Поля {missing_fields} не были заполнены. Сформулируй вежливый запрос к пользователю, чтобы он предоставил недостающую информацию одним текстом.
+Будь лаконичен и учти что беседа уже идет и не нужно здороваться.
+""")
+first_question_chain = LLMChain(llm=llm, prompt=first_question_prompt)
+first_question_tool = Tool(name="FirstQuestionGenerator", func=first_question_chain.run,
+                           description="Генерирует первый запрос к пользователю")
 
-    # Создаем агента
-    return create_structured_chat_agent(
-        llm=llm,
-        tools=tools,
-        prompt=prompt
+# Инструмент для уточнений
+neutral_refinement_prompt = ChatPromptTemplate.from_template("""
+На основе недостающих данных {missing_fields}, сформулируй запрос к пользователю, чтобы уточнить эту информацию. Будь лаконичен и учти что беседа уже идет и не нужно здороваться.
+""")
+neutral_question_chain = LLMChain(llm=llm, prompt=neutral_refinement_prompt)
+neutral_question_tool = Tool(name="NeutralQuestionGenerator", func=neutral_question_chain.run,
+                             description="Генерирует уточняющий запрос")
+
+
+@router.message(OnboardingState.waiting_for_company_name)
+async def handle_company_name(message: Message, state: FSMContext):
+    """
+    Обработка названия компании через LangChain.
+    """
+    extracted_response = extractor_tool.run({"input": message.text})
+    data = json.loads(extracted_response)
+    await state.update_data(data=data)
+
+    # Проверяем недостающие поля
+    missing_fields = [field for field, value in data.items() if not value and field != "additional_info"]
+
+    if not missing_fields:
+        await state.set_state(OnboardingState.showing_collected_data)
+        await show_collected_data(message, state)
+    else:
+        await state.update_data(missing_fields=missing_fields)
+        question = first_question_tool.run({"missing_fields": ", ".join(missing_fields)})
+        await message.answer(question)
+        await state.set_state(OnboardingState.waiting_for_missing_data)
+
+
+@router.message(OnboardingState.waiting_for_missing_data)
+async def handle_missing_data(message: Message, state: FSMContext):
+    """
+    Уточнение недостающих данных через LangChain.
+    """
+    data = await state.get_data()
+    missing_fields = data.get("missing_fields", [])
+
+    logger.debug(f"Текущие данные перед уточнением: {data}")
+
+    # Повторное извлечение данных
+    refined_response = extractor_tool.run({"input": message.text})
+    refined_data = json.loads(refined_response)
+
+    # Обновляем данные состояния
+    for field in missing_fields:
+        if refined_data.get(field):
+            data[field] = refined_data[field]
+
+    # Проверяем оставшиеся недостающие поля
+    missing_fields = [field for field in missing_fields if not data.get(field)]
+    await state.update_data(data)
+    await state.update_data(missing_fields=missing_fields)
+
+    logger.debug(f"Обновленные данные после уточнения: {data}")
+
+    if not missing_fields:
+        logger.debug("Все данные собраны. Переходим к подтверждению.")
+        await state.set_state(OnboardingState.showing_collected_data)
+        await show_collected_data(message, state)
+    else:
+        question = neutral_question_tool.run({"missing_fields": ", ".join(missing_fields)})
+        await message.answer(question)
+
+
+async def show_collected_data(message: Message, state: FSMContext):
+    """
+    Отображение собранных данных пользователю для подтверждения.
+    """
+    data = await state.get_data()
+
+    # Проверяем наличие данных
+    logger.debug(f"Данные для отображения пользователю: {data}")
+
+    summary = (
+        f"Пожалуйста, подтвердите собранные данные:\n\n"
+        f"Название компании: {data.get('company_name', 'Не указано')}\n"
+        f"Сфера деятельности: {data.get('industry', 'Не указано')}\n"
+        f"Регион работы: {data.get('region', 'Не указано')}\n"
+        f"Email: {data.get('contact_email', 'Не указано')}\n"
+        f"Телефон: {data.get('contact_phone', 'Не указано')}\n"
+        f"Дополнительная информация: {data.get('additional_info', 'Не указано')}\n\n"
+        f"Если все верно, напишите 'Да'. Если есть ошибка, напишите 'Нет'."
     )
+    await message.answer(summary)
+    await state.set_state(OnboardingState.confirmation)
 
-# Обработчик состояния
-@router.message(StateFilter(OnboardingState.waiting_for_first_response))
-async def handle_onboarding_message(message: Message, state: FSMContext, bot: Bot):
+
+@router.message(OnboardingState.confirmation)
+async def handle_confirmation(message: Message, state: FSMContext):
     """
-    Обрабатывает сообщение пользователя и заполняет данные.
+    Подтверждение данных компании.
     """
-    try:
-        chat_id = message.chat.id
-        text = message.text
+    data = await state.get_data()
+    logger.debug(f"Данные для подтверждения: {data}")
 
-        # Создаем агента
-        agent = create_onboarding_agent()
+    if message.text.lower() == "да":
+        company_id = data.get("company_id")
 
-        # Получаем сохраненные данные
-        collected_data = await state.get_data()
-        required_fields = [
-            "company_name", "industry", "region", "contact_email", "contact_phone", "additional_info"
-        ]
+        # Генерация числового company_id, если он отсутствует
+        if not company_id:
+            logger.warning("company_id отсутствует, создаем новый.")
+            company_id = int(f"{abs(message.chat.id)}{int(message.date.timestamp())}")
+            data["company_id"] = company_id
+            await state.update_data(company_id=company_id)
 
-        # Вызываем агента
-        response = agent.invoke({"input": text})
+        db: Session = SessionLocal()
+        try:
+            # Проверяем, существует ли запись с данным company_id
+            existing_company = db.query(CompanyInfo).filter_by(company_id=company_id).first()
+            if existing_company:
+                logger.info(f"Компания с ID {company_id} уже существует, обновляем данные.")
+                existing_company.company_name = data.get("company_name")
+                existing_company.industry = data.get("industry")
+                existing_company.region = data.get("region")
+                existing_company.contact_email = data.get("contact_email")
+                existing_company.contact_phone = data.get("contact_phone")
+                existing_company.additional_info = data.get("additional_info")
+            else:
+                logger.info(f"Создаем новую запись для компании с ID {company_id}.")
+                company_info = CompanyInfo(
+                    company_id=company_id,
+                    company_name=data.get("company_name"),
+                    industry=data.get("industry"),
+                    region=data.get("region"),
+                    contact_email=data.get("contact_email"),
+                    contact_phone=data.get("contact_phone"),
+                    additional_info=data.get("additional_info"),
+                )
+                db.add(company_info)
 
-        # Логируем результат
-        logger.info(f"Ответ агента: {response}")
+            db.commit()
+            logger.info("Данные компании успешно сохранены в базу данных.")
 
-        # Извлекаем данные из ответа
-        for message_data in response["messages"]:
-            if isinstance(message_data, dict) and message_data.get("content"):
-                try:
-                    result = json.loads(message_data["content"])
-                    field = result.get("action")
-                    value = result.get("action_input")
-                    if field in required_fields:
-                        collected_data[field] = value
-                except json.JSONDecodeError:
-                    logger.error("Ошибка декодирования JSON из ответа инструмента.")
+            await message.answer(
+                "🎉 Данные компании успешно сохранены! Теперь вы можете начать работу с ботом.\n"
+                "Напишите 'Помощь', чтобы узнать, что я могу делать."
+            )
+        except Exception as e:
+            logger.error(f"Ошибка сохранения данных компании: {e}", exc_info=True)
+            await message.answer("Произошла ошибка при сохранении данных. Попробуйте снова.")
+        finally:
+            db.close()
 
-        # Проверяем, какие данные отсутствуют
-        incomplete_fields = [field for field in required_fields if not collected_data.get(field)]
-
-        if not incomplete_fields:
-            # Все данные собраны
-            summary = "\n".join([f"{key}: {value}" for key, value in collected_data.items()])
-            await bot.send_message(chat_id, f"Все данные успешно собраны:\n{summary}")
-            await state.clear()
-        else:
-            # Уточняем недостающие данные
-            for field in incomplete_fields:
-                description = next((tool.description for tool in get_onboarding_tools() if tool.name == field), field)
-                await bot.send_message(chat_id, f"Пожалуйста, уточните: {description}")
-            await state.update_data(**collected_data)
-
-    except Exception as e:
-        logger.error(f"Ошибка обработки сообщения: {e}", exc_info=True)
-        await bot.send_message(chat_id, "Произошла ошибка. Попробуйте еще раз.")
+        await state.clear()
+        logger.debug("Состояние пользователя очищено.")
+    else:
+        logger.info("Пользователь отклонил подтверждение данных.")
+        await state.set_state(OnboardingState.waiting_for_company_name)
+        await message.answer("Опрос начат заново. Введите название вашей компании.")

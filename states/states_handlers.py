@@ -30,7 +30,8 @@ from handlers.campaign_handlers.campaign_handlers import (
 
 # Импорты для работы с email таблицами
 from handlers.email_table_handler import handle_file_upload, logger
-from handlers.onboarding_handler import handle_first_response
+from handlers.onboarding_handler import handle_missing_data, handle_company_name, handle_confirmation, \
+    show_collected_data
 from handlers.tamplate_handlers.tamplate_handler import confirm_template, generate_template, handle_subject
 
 # Импорт состояний
@@ -128,13 +129,20 @@ async def handle_onboarding_states(message: Message, state: FSMContext, current_
     """
     Обработка состояний для онбординга.
     """
-    bot = message.bot  # Убедитесь, что бот доступен из контекста сообщения
+    bot = message.bot  # Получаем экземпляр бота из контекста сообщения
 
-    if current_state == "OnboardingState:waiting_for_first_response":
-        # Передаем управление обработчику первого ответа
-        await handle_first_response(message, state, bot)
-    elif current_state == "OnboardingState:waiting_for_respons":
-        await handle_first_response(message, state, bot)
+    if current_state == "OnboardingState:waiting_for_company_name":
+        # Передаем управление обработчику первого ввода (название компании)
+        await handle_company_name(message, state)
+    elif current_state == "OnboardingState:waiting_for_missing_data":
+        # Уточнение недостающих данных
+        await handle_missing_data(message, state)
+    elif current_state == "OnboardingState:showing_collected_data":
+        # Уточнение недостающих данных
+        await show_collected_data(message, state)
+    elif current_state == "OnboardingState:confirmation":
+        # Подтверждение данных
+        await handle_confirmation(message, state)
     else:
         # Логируем неизвестное состояние
         logger.warning(f"Неизвестное состояние онбординга: {current_state}.")

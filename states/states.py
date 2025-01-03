@@ -3,12 +3,15 @@ from aiogram.fsm.state import StatesGroup, State
 class BaseState(StatesGroup):
     default = State()
 
+
 class OnboardingState(StatesGroup):
     """
     Состояния для процесса онбординга.
     """
-    waiting_for_first_response = State()  # Ожидание ввода названия компании
-    waiting_for_response = State()
+    waiting_for_company_name = State()
+    showing_collected_data = State()
+    waiting_for_missing_data = State()
+    confirmation = State()
 
 
 class AddCompanyState(StatesGroup):

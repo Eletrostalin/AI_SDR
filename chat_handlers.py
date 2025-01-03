@@ -101,7 +101,7 @@ async def greet_new_user(event: ChatMemberUpdated | dict, state: FSMContext):
                     storage_key = StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id)
                     await state.storage.set_state(
                         key=storage_key,
-                        state=OnboardingState.waiting_for_first_response
+                        state=OnboardingState.waiting_for_company_name
                     )
                     await state.storage.set_data(
                         key=storage_key,

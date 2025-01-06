@@ -2,87 +2,148 @@ from aiogram import Router
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.orm import Session
+
+from config import OPENAI_API_KEY
 from db.db import SessionLocal
 from db.models import CompanyInfo
 from states.states import OnboardingState
+from langchain.agents import Tool
+from langchain.chains import LLMChain
+from langchain.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+import json
 import logging
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 
+llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, temperature=0.7)
+
+# Инструмент для извлечения сущностей
+extractor_prompt = ChatPromptTemplate.from_template("""
+Извлеки следующую информацию из текста:
+1. Название компании
+2. Отрасль/сфера деятельности
+3. Регион/география работы
+4. Основной email
+5. Контактный телефон
+6. Дополнительная информация
+
+Текст: {input}
+
+Ответь в формате JSON:
+{{
+    "company_name": "Название компании",
+    "industry": "Отрасль/сфера деятельности",
+    "region": null,
+    "contact_email": null,
+    "contact_phone": null,
+    "additional_info": null
+}}
+
+Если информация отсутствует, заполни поле значением `null`.
+Не додумывай данные и не делай предположений.
+""")
+extractor_chain = LLMChain(llm=llm, prompt=extractor_prompt)
+extractor_tool = Tool(name="Extractor", func=extractor_chain.run, description="Извлекает сущности из текста")
+
+# Инструмент для первого запроса
+first_question_prompt = ChatPromptTemplate.from_template("""
+Поля {missing_fields} не были заполнены. Сформулируй вежливый запрос к пользователю, чтобы он предоставил недостающую информацию одним текстом.
+Будь лаконичен и учти что беседа уже идет и не нужно здороваться.
+""")
+first_question_chain = LLMChain(llm=llm, prompt=first_question_prompt)
+first_question_tool = Tool(name="FirstQuestionGenerator", func=first_question_chain.run,
+                           description="Генерирует первый запрос к пользователю")
+
+# Инструмент для уточнений
+neutral_refinement_prompt = ChatPromptTemplate.from_template("""
+На основе недостающих данных {missing_fields}, сформулируй запрос к пользователю, чтобы уточнить эту информацию. Будь лаконичен и учти что беседа уже идет и не нужно здороваться.
+""")
+neutral_question_chain = LLMChain(llm=llm, prompt=neutral_refinement_prompt)
+neutral_question_tool = Tool(name="NeutralQuestionGenerator", func=neutral_question_chain.run,
+                             description="Генерирует уточняющий запрос")
+
+
 @router.message(OnboardingState.waiting_for_company_name)
 async def handle_company_name(message: Message, state: FSMContext):
     """
-    Обработка названия компании.
+    Обработка названия компании через LangChain.
     """
-    await state.update_data(company_name=message.text)
-    await state.set_state(OnboardingState.waiting_for_industry)
-    await message.answer("Отлично! Теперь укажите сферу деятельности вашей компании.")
+    extracted_response = extractor_tool.run({"input": message.text})
+    data = json.loads(extracted_response)
+    await state.update_data(data=data)
+
+    # Проверяем недостающие поля
+    missing_fields = [field for field, value in data.items() if not value and field != "additional_info"]
+
+    if not missing_fields:
+        await state.set_state(OnboardingState.showing_collected_data)
+        await show_collected_data(message, state)
+    else:
+        await state.update_data(missing_fields=missing_fields)
+        question = first_question_tool.run({"missing_fields": ", ".join(missing_fields)})
+        await message.answer(question)
+        await state.set_state(OnboardingState.waiting_for_missing_data)
 
 
-@router.message(OnboardingState.waiting_for_industry)
-async def handle_industry(message: Message, state: FSMContext):
+@router.message(OnboardingState.waiting_for_missing_data)
+async def handle_missing_data(message: Message, state: FSMContext):
     """
-    Обработка сферы деятельности.
+    Уточнение недостающих данных через LangChain.
     """
-    await state.update_data(industry=message.text)
-    await state.set_state(OnboardingState.waiting_for_region)
-    await message.answer("Какой регион или географию работы охватывает ваша компания?")
-
-
-@router.message(OnboardingState.waiting_for_region)
-async def handle_region(message: Message, state: FSMContext):
-    """
-    Обработка региона.
-    """
-    await state.update_data(region=message.text)
-    await state.set_state(OnboardingState.waiting_for_contact_email)
-    await message.answer("Укажите основной email для связи.")
-
-
-@router.message(OnboardingState.waiting_for_contact_email)
-async def handle_contact_email(message: Message, state: FSMContext):
-    """
-    Обработка email.
-    """
-    await state.update_data(contact_email=message.text)
-    await state.set_state(OnboardingState.waiting_for_contact_phone)
-    await message.answer("Укажите контактный номер телефона (можно пропустить, отправив 'Пропустить').")
-
-
-@router.message(OnboardingState.waiting_for_contact_phone)
-async def handle_contact_phone(message: Message, state: FSMContext):
-    """
-    Обработка телефона.
-    """
-    if message.text.lower() != "пропустить":
-        await state.update_data(contact_phone=message.text)
-    await state.set_state(OnboardingState.waiting_for_additional_details)
-    await message.answer("Есть ли дополнительные данные, которые вы хотите добавить? Напишите их или отправьте 'Пропустить'.")
-
-
-@router.message(OnboardingState.waiting_for_additional_details)
-async def handle_additional_details(message: Message, state: FSMContext):
-    """
-    Обработка дополнительных данных.
-    """
-    if message.text.lower() != "пропустить":
-        await state.update_data(additional_info=message.text)
-
-    # Переход к подтверждению
     data = await state.get_data()
-    await state.set_state(OnboardingState.confirmation)
-    await message.answer(
-        "Проверьте данные:\n"
-        f"📌 Название компании: {data.get('company_name')}\n"
-        f"📌 Сфера деятельности: {data.get('industry')}\n"
-        f"📌 Регион: {data.get('region')}\n"
-        f"📌 Email: {data.get('contact_email')}\n"
-        f"📌 Телефон: {data.get('contact_phone', 'не указан')}\n"
-        f"📌 Дополнительно: {data.get('additional_info', 'не указано')}\n\n"
-        "Подтвердите, отправив 'Да'. Если хотите начать заново, отправьте 'Нет'."
+    missing_fields = data.get("missing_fields", [])
+
+    logger.debug(f"Текущие данные перед уточнением: {data}")
+
+    # Повторное извлечение данных
+    refined_response = extractor_tool.run({"input": message.text})
+    refined_data = json.loads(refined_response)
+
+    # Обновляем данные состояния
+    for field in missing_fields:
+        if refined_data.get(field):
+            data[field] = refined_data[field]
+
+    # Проверяем оставшиеся недостающие поля
+    missing_fields = [field for field in missing_fields if not data.get(field)]
+    await state.update_data(data)
+    await state.update_data(missing_fields=missing_fields)
+
+    logger.debug(f"Обновленные данные после уточнения: {data}")
+
+    if not missing_fields:
+        logger.debug("Все данные собраны. Переходим к подтверждению.")
+        await state.set_state(OnboardingState.showing_collected_data)
+        await show_collected_data(message, state)
+    else:
+        question = neutral_question_tool.run({"missing_fields": ", ".join(missing_fields)})
+        await message.answer(question)
+
+
+async def show_collected_data(message: Message, state: FSMContext):
+    """
+    Отображение собранных данных пользователю для подтверждения.
+    """
+    data = await state.get_data()
+
+    # Проверяем наличие данных
+    logger.debug(f"Данные для отображения пользователю: {data}")
+
+    summary = (
+        f"Пожалуйста, подтвердите собранные данные:\n\n"
+        f"Название компании: {data.get('company_name', 'Не указано')}\n"
+        f"Сфера деятельности: {data.get('industry', 'Не указано')}\n"
+        f"Регион работы: {data.get('region', 'Не указано')}\n"
+        f"Email: {data.get('contact_email', 'Не указано')}\n"
+        f"Телефон: {data.get('contact_phone', 'Не указано')}\n"
+        f"Дополнительная информация: {data.get('additional_info', 'Не указано')}\n\n"
+        f"Если все верно, напишите 'Да'. Если есть ошибка, напишите 'Нет'."
     )
+    await message.answer(summary)
+    await state.set_state(OnboardingState.confirmation)
 
 
 @router.message(OnboardingState.confirmation)
@@ -90,29 +151,46 @@ async def handle_confirmation(message: Message, state: FSMContext):
     """
     Подтверждение данных компании.
     """
+    data = await state.get_data()
+    logger.debug(f"Данные для подтверждения: {data}")
+
     if message.text.lower() == "да":
-        data = await state.get_data()
         company_id = data.get("company_id")
 
+        # Генерация числового company_id, если он отсутствует
         if not company_id:
-            await message.answer("Ошибка: Не удалось получить данные о компании. Повторите онбординг.")
-            await state.set_state(OnboardingState.waiting_for_company_name)
-            return
+            logger.warning("company_id отсутствует, создаем новый.")
+            company_id = int(f"{abs(message.chat.id)}{int(message.date.timestamp())}")
+            data["company_id"] = company_id
+            await state.update_data(company_id=company_id)
 
         db: Session = SessionLocal()
         try:
-            # Сохраняем данные компании в таблицу CompanyInfo
-            company_info = CompanyInfo(
-                company_id=company_id,
-                company_name=data.get("company_name"),
-                industry=data.get("industry"),
-                region=data.get("region"),
-                contact_email=data.get("contact_email"),
-                contact_phone=data.get("contact_phone"),
-                additional_info=data.get("additional_info"),
-            )
-            db.add(company_info)
+            # Проверяем, существует ли запись с данным company_id
+            existing_company = db.query(CompanyInfo).filter_by(company_id=company_id).first()
+            if existing_company:
+                logger.info(f"Компания с ID {company_id} уже существует, обновляем данные.")
+                existing_company.company_name = data.get("company_name")
+                existing_company.industry = data.get("industry")
+                existing_company.region = data.get("region")
+                existing_company.contact_email = data.get("contact_email")
+                existing_company.contact_phone = data.get("contact_phone")
+                existing_company.additional_info = data.get("additional_info")
+            else:
+                logger.info(f"Создаем новую запись для компании с ID {company_id}.")
+                company_info = CompanyInfo(
+                    company_id=company_id,
+                    company_name=data.get("company_name"),
+                    industry=data.get("industry"),
+                    region=data.get("region"),
+                    contact_email=data.get("contact_email"),
+                    contact_phone=data.get("contact_phone"),
+                    additional_info=data.get("additional_info"),
+                )
+                db.add(company_info)
+
             db.commit()
+            logger.info("Данные компании успешно сохранены в базу данных.")
 
             await message.answer(
                 "🎉 Данные компании успешно сохранены! Теперь вы можете начать работу с ботом.\n"
@@ -125,6 +203,8 @@ async def handle_confirmation(message: Message, state: FSMContext):
             db.close()
 
         await state.clear()
+        logger.debug("Состояние пользователя очищено.")
     else:
+        logger.info("Пользователь отклонил подтверждение данных.")
         await state.set_state(OnboardingState.waiting_for_company_name)
         await message.answer("Опрос начат заново. Введите название вашей компании.")

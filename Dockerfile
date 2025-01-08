@@ -4,6 +4,8 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
 libpq-dev \
 gcc \
+netcat \
+iputils-ping \
 && rm -rf /var/lib/apt/lists/*
 
 # Создаем нового пользователя и переключаемся на него
@@ -24,4 +26,4 @@ RUN python3.11 -m pip install --upgrade pip && \
 pip install --no-cache-dir -r requirements.txt
 
 # Команда для запуска приложения
-CMD ["python", "main.py"]
+CMD ["sh", "-c", "until nc -z db 5433; do echo 'Waiting for the database...'; sleep 1; done; python main.py"]]

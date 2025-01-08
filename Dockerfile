@@ -24,4 +24,4 @@ RUN python3.11 -m pip install --upgrade pip && \
 pip install --no-cache-dir -r requirements.txt
 
 # Команда для запуска приложения
-CMD ["python", "main.py"]
+CMD ["sh", "-c", "until nc -z db 5432; do echo 'Waiting for the database...'; sleep 1; done; python main.py"]

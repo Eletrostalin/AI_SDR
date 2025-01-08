@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from db.models import Migration
 
-DATABASE_URL = 'postgresql://postgres:13579033@localhost:5432/AI_SDR_stage'
+DATABASE_URL = 'postgresql+psycopg2://postgres:13579033@db:5433/AI_SDR_stage'
 engine = create_engine(DATABASE_URL, echo=True)
 Session = sessionmaker(bind=engine)
 

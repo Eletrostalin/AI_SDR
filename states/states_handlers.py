@@ -1,21 +1,43 @@
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from handlers.content_plan_handlers import (process_content_plan_description,
-                                            process_wave_count,
-                                            process_wave_details,
-                                            confirm_content_plan)
-from states.states import (OnboardingState,
-                           AddEmailSegmentationState,
-                           EditCompanyState,
-                           AddCampaignState,
-                           AddContentPlanState)
-from handlers.campaign_handlers.campaign_handlers import process_campaign_name, process_start_date, process_end_date, \
-    process_campaign_params, handle_full_campaign_data, confirm_campaign_creation
-from handlers.company_handlers import process_edit_company_information, confirm_edit_company_information
+# Импорт обработчиков для различных состояний
+from handlers.company_handlers.company_handlers import (
+    process_company_information,
+    handle_add_company,
+    confirm_company_information,
+    process_edit_company_information,
+    confirm_edit_company_information
+)
+from handlers.content_plan_handlers.content_plan_handlers import (
+    process_content_plan_description,
+    process_wave_count,
+    process_wave_details,
+    confirm_content_plan
+)
+from handlers.campaign_handlers.campaign_handlers import (
+    process_campaign_name,
+    process_start_date,
+    process_end_date,
+    confirm_campaign_creation,
+    process_campaign_data,
+    process_filters
+)
 from handlers.email_table_handler import handle_file_upload
-from handlers.onboarding_handler import handle_company_name, handle_industry, handle_region, handle_contact_email, \
-    handle_contact_phone, handle_additional_details, handle_confirmation
+from handlers.onboarding_handler import (
+    handle_company_name,
+    handle_confirmation,
+    handle_missing_data,
+    show_collected_data
+)
+from states.states import (
+    OnboardingState,
+    AddEmailSegmentationState,
+    EditCompanyState,
+    AddCampaignState,
+    AddContentPlanState,
+    AddCompanyState
+)
 
 from logger import logger
 
@@ -26,18 +48,16 @@ async def handle_onboarding_states(message: Message, state: FSMContext, current_
     """
     if current_state == OnboardingState.waiting_for_company_name.state:
         await handle_company_name(message, state)
-    elif current_state == OnboardingState.waiting_for_industry.state:
-        await handle_industry(message, state)
-    elif current_state == OnboardingState.waiting_for_region.state:
-        await handle_region(message, state)
-    elif current_state == OnboardingState.waiting_for_contact_email.state:
-        await handle_contact_email(message, state)
-    elif current_state == OnboardingState.waiting_for_contact_phone.state:
-        await handle_contact_phone(message, state)
-    elif current_state == OnboardingState.waiting_for_additional_details.state:
-        await handle_additional_details(message, state)
+    elif current_state == OnboardingState.waiting_for_missing_data.state:
+        await handle_missing_data(message, state)
+    elif current_state == OnboardingState.showing_collected_data.state:
+        await show_collected_data(message, state)
     elif current_state == OnboardingState.confirmation.state:
         await handle_confirmation(message, state)
+    else:
+        # Если состояние не распознано
+        await message.answer("Неизвестное состояние. Пожалуйста, начните заново.")
+        await state.clear()
 
 async def handle_add_email_segmentation_states(message: Message, state: FSMContext, current_state: str):
     """
@@ -56,34 +76,42 @@ async def handle_edit_company_states(message: Message, state: FSMContext, curren
     """
     Обрабатывает состояния редактирования компании.
     """
-    if current_state == EditCompanyState.waiting_for_updated_info.state:
+    if current_state == AddCompanyState.waiting_for_information.state:
+        await process_company_information(message, state, bot=message.bot)
+    elif current_state == AddCompanyState.waiting_for_company_name.state:
+        await handle_add_company(message, state)
+    elif current_state == AddCompanyState.waiting_for_confirmation.state:
+        await confirm_company_information(message, state)
+    elif current_state == EditCompanyState.waiting_for_updated_info.state:
         await process_edit_company_information(message, state)
     elif current_state == EditCompanyState.waiting_for_confirmation.state:
         await confirm_edit_company_information(message, state)
+    else:
+        # Если состояние не распознано
+        await message.answer("Неизвестное состояние. Пожалуйста, начните заново.")
+        await state.clear()
 
 # Обработка состояний добавления кампании
 async def handle_add_campaign_states(message: Message, state: FSMContext, current_state: str):
     """
     Обрабатывает состояния добавления кампании.
     """
-    if current_state == AddCampaignState.waiting_for_campaign_information.state:
-        # Обработка полного текста с информацией о кампании
-        await handle_full_campaign_data(message, state)
-    elif current_state == AddCampaignState.waiting_for_campaign_name.state:
-        # Обработка ввода названия кампании
+    if current_state == AddCampaignState.waiting_for_campaign_name.state:
         await process_campaign_name(message, state)
+    elif current_state == AddCampaignState.waiting_for_campaign_data.state:
+        await process_campaign_data(message, state)
     elif current_state == AddCampaignState.waiting_for_start_date.state:
-        # Обработка ввода даты начала кампании
         await process_start_date(message, state)
     elif current_state == AddCampaignState.waiting_for_end_date.state:
-        # Обработка ввода даты окончания кампании
         await process_end_date(message, state)
-    elif current_state == AddCampaignState.waiting_for_params.state:
-        # Обработка ввода дополнительных параметров кампании
-        await process_campaign_params(message, state)
+    elif current_state == AddCampaignState.waiting_for_filters.state:
+        await process_filters(message, state)
     elif current_state == AddCampaignState.waiting_for_confirmation.state:
-        # Обработка подтверждения данных кампании
         await confirm_campaign_creation(message, state)
+    else:
+        # Обработка неизвестного состояния
+        await message.reply("Неизвестное состояние. Начните процесс заново.")
+        await state.clear()
 
 async def handle_add_content_plan_states(message: Message, state: FSMContext, current_state: str):
     """

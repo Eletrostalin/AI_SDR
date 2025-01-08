@@ -11,8 +11,8 @@ from db.models import Company
 from dispatcher import dispatch_classification
 from states.states import OnboardingState
 from logger import logger
-from states.states_handlers import handle_onboarding_states, handle_edit_company_states, handle_add_campaign_states, \
-    handle_add_content_plan_states, handle_add_email_segmentation_states
+from states.states_handlers import handle_onboarding_states, handle_edit_company_states, \
+    handle_add_email_segmentation_states, handle_add_content_plan_states, handle_add_campaign_states
 
 router = Router()
 

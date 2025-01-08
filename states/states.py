@@ -25,7 +25,7 @@ class AddCampaignState(StatesGroup):
     waiting_for_start_date = State()     # Ожидание даты начала
     waiting_for_end_date = State()       # Ожидание даты окончания
     waiting_for_missing_data = State()
-    waiting_for_filters = State()# Ожидание уточнения недостающих данных
+    waiting_for_filters = State() # Ожидание уточнения недостающих данных
     waiting_for_confirmation = State()  # Ожидание подтверждения от пользователя
 
 class AddContentPlanState(StatesGroup):

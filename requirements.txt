@@ -2,7 +2,7 @@ aiogram==3.14.0             # Библиотека для работы с Telegr
 beautifulsoup4==4.12.3      # Библиотека для парсинга HTML и XML, используется для анализа данных из веб-источников
 greenlet==3.1.1             # Нужен для поддержки асинхронных операций в SQLAlchemy и других асинхронных библиотеках
 langchain==0.3.7            # Инструменты для создания цепочек взаимодействий и работы с языковыми моделями
-langchain-community>=0.3.6
+langchain-community>=0.3.8
 langchain-core==0.3.28
 langchain-openai==0.2.9
 langchain-text-splitters==0.3.2

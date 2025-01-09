@@ -1,6 +1,4 @@
 import asyncio
-import time
-import psycopg2
 from aiogram import Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from logger import logger
@@ -20,40 +18,9 @@ from config import TARGET_CHAT_ID
 from db.migration_manager import apply_migrations  # Импорт функции миграций
 
 
-def wait_for_db(host, port, database, user, password):
-    """
-    Ожидает доступности базы данных перед выполнением операций.
-    """
-    logger.info("Ожидание готовности базы данных...")
-    while True:
-        try:
-            conn = psycopg2.connect(
-                host=host,
-                port=port,
-                database=database,
-                user=user,
-                password=password
-            )
-            conn.close()
-            logger.info("База данных доступна.")
-            break
-        except psycopg2.OperationalError as e:
-            logger.warning(f"База данных еще не готова: {e}")
-            time.sleep(5)
-
-
 async def main():
     # Логирование начала работы бота
     logger.info("Запуск бота...")
-
-    # Ожидание готовности базы данных
-    wait_for_db(
-        host="db",       # Замените на 'localhost', если используете network_mode: host
-        port=5433,       # Убедитесь, что порт правильный
-        database="AI_SDR_stage",
-        user="postgres",
-        password="13579033"
-    )
 
     # Применение миграций перед запуском
     logger.info("Применение миграций...")
@@ -83,6 +50,7 @@ def setup_routers(dp: Dispatcher):
     dp.include_router(campaign_router)
 
     # Регистрация маршрутизатора для онбординга
+
     dp.include_router(onboarding_router)
 
     # Регистрация команды для удаления кампании

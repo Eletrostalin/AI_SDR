@@ -19,7 +19,7 @@ from states.states_handlers import (
 )
 
 # Настройка подключения к базе данных
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:13579033@localhost:5432/AI_SDR_stage")
+DATABASE_URL = "postgresql+asyncpg://postgres:13579033@localhost:5432/AI_SDR_stage"
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 async_session = sessionmaker(

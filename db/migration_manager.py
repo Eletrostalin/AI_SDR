@@ -1,41 +1,36 @@
 import os
 import logging
-from sqlalchemy import select
-from db.models import Migration
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy import create_engine, text, select
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql import text
+
+from config import DATABASE_URL
+from db.models import Migration
 
 
-DATABASE_URL="postgresql+psycopg://postgres:13579033@db:5433/AI_SDR_stage"
 
-engine = create_async_engine(DATABASE_URL, echo=True)
-# Настройка фабрики для создания асинхронных сессий
-async_session = sessionmaker(
-    bind=engine,            # Привязка к асинхронному движку
-    class_=AsyncSession,    # Использование асинхронного класса сессий
-    expire_on_commit=False  # Не сбрасывать объекты после завершения транзакций
-)
+# Настройка синхронного движка
+engine = create_engine(DATABASE_URL, echo=True)
 
+# Настройка фабрики для создания сессий
+Session = sessionmaker(bind=engine)
 
-async def check_tables_exist():  # Импортируй внутри функции, чтобы избежать циклического импорта
-    async with async_session() as session:
-        async with session.begin():
-            result = await session.execute(
-                text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'migrations');")
-            )
-            return result.scalar()
+def check_tables_exist():  # Синхронная проверка
+    with Session() as session:
+        result = session.execute(
+            text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'migrations');")
+        )
+        return result.scalar()
 
-async def apply_migrations():
+def apply_migrations():
     migrations_folder = 'migrations'
 
     # Проверка наличия таблиц в базе данных
-    tables_exist = await check_tables_exist()
+    tables_exist = check_tables_exist()
 
-    async with async_session() as session:
+    with Session() as session:
         if tables_exist:
-            result = await session.execute(select(Migration.migration_name))
-            applied_migrations = set(row[0] for row in result.all())
+            result = session.execute(select(Migration.migration_name))
+            applied_migrations = set(row[0] for row in result.fetchall())
         else:
             applied_migrations = set()
             logging.info("Таблицы не найдены. Применение последней миграции.")
@@ -46,26 +41,25 @@ async def apply_migrations():
 
         if new_migrations:
             logging.info(f"Найдено {len(new_migrations)} новых миграций: {new_migrations}")
-            async with engine.connect() as conn:
-                async with conn.begin():
-                    try:
-                        for migration in new_migrations:
-                            with open(os.path.join(migrations_folder, migration), 'r', encoding='utf-8') as file:
-                                sql_commands = file.read()
-                            for command in sql_commands.split(';'):
-                                command = command.strip()
-                                if command:
-                                    logging.info(f"Применение SQL команды:\n{command}")
-                                    await conn.execute(text(command))
-                        await conn.commit()
+            with engine.connect() as conn:
+                try:
+                    for migration in new_migrations:
+                        with open(os.path.join(migrations_folder, migration), 'r', encoding='utf-8') as file:
+                            sql_commands = file.read()
+                        for command in sql_commands.split(';'):
+                            command = command.strip()
+                            if command:
+                                logging.info(f"Применение SQL команды:\n{command}")
+                                conn.execute(text(command))
+                        conn.commit()
 
-                        for migration in new_migrations:
-                            session.add(Migration(migration_name=migration))
-                        await session.commit()
-                        logging.info(f"Миграции {new_migrations} успешно применены.")
+                    for migration in new_migrations:
+                        session.add(Migration(migration_name=migration))
+                    session.commit()
+                    logging.info(f"Миграции {new_migrations} успешно применены.")
 
-                    except Exception as e:
-                        logging.error(f"Ошибка при применении миграции: {e}")
-                        await conn.rollback()
+                except Exception as e:
+                    logging.error(f"Ошибка при применении миграции: {e}")
+                    conn.rollback()
         else:
             logging.info("Новые миграции отсутствуют.")

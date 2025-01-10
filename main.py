@@ -24,7 +24,7 @@ async def main():
 
     # Применение миграций перед запуском
     logger.info("Применение миграций...")
-    await apply_migrations()
+    apply_migrations()
     logger.info("Миграции успешно применены.")
 
     dp = Dispatcher(storage=MemoryStorage())

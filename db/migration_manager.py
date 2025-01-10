@@ -3,12 +3,14 @@ import logging
 from sqlalchemy import create_engine, text, select
 from sqlalchemy.orm import sessionmaker
 from db.models import Migration
-from config import DATABASE_URL  # Импортируем адрес базы данных из конфигурации
+
+# Определяем строку подключения к базе данных прямо в модуле
+DATABASE_URL = "postgresql://postgres:13579033@db:5433/AI_SDR_stage"
 
 # Создаем синхронный движок
 engine = create_engine(DATABASE_URL, echo=True)
 
-# Настройка фабрики для создания синхронных сессий
+# Настройка сессий
 Session = sessionmaker(bind=engine, expire_on_commit=False)
 
 

@@ -3,10 +3,9 @@ import logging
 from sqlalchemy import create_engine, text, select
 from sqlalchemy.orm import sessionmaker
 
-from config import DATABASE_URL
 from db.models import Migration
 
-
+DATABASE_URL = "postgresql+psycopg://postgres:13579033@localhost:5433/AI_SDR_stage"
 
 # Настройка синхронного движка
 engine = create_engine(DATABASE_URL, echo=True)

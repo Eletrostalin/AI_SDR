@@ -1,32 +1,18 @@
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
 from aiogram import Router
-from sqlalchemy import select
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.types import ChatMemberUpdated, Message, ContentType
-import os
+from sqlalchemy.orm import Session
 
 from classifier import classify_message
+from db.db import SessionLocal
+from db.db_auth import create_or_get_company_and_user
 from db.models import Company
 from dispatcher import dispatch_classification
 from states.states import OnboardingState
 from logger import logger
-from states.states_handlers import (
-    handle_onboarding_states, handle_edit_company_states,
-    handle_add_email_segmentation_states, handle_add_content_plan_states,
-    handle_add_campaign_states
-)
-
-# Настройка подключения к базе данных
-DATABASE_URL = "postgresql+asyncpg://postgres:13579033@localhost:5432/AI_SDR_stage"
-
-engine = create_async_engine(DATABASE_URL, echo=True)
-async_session = sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
+from states.states_handlers import handle_onboarding_states, handle_edit_company_states, \
+    handle_add_email_segmentation_states, handle_add_content_plan_states, handle_add_campaign_states
 
 router = Router()
 
@@ -37,6 +23,7 @@ def create_event_data(event: ChatMemberUpdated | Message, new_member=None) -> di
     Унифицирует данные для обработки событий добавления пользователей.
     """
     if isinstance(event, ChatMemberUpdated):
+        # Если это объект ChatMemberUpdated
         return {
             "chat": event.chat,
             "new_chat_member": {
@@ -50,15 +37,16 @@ def create_event_data(event: ChatMemberUpdated | Message, new_member=None) -> di
             "bot": event.bot,
         }
     elif isinstance(event, Message) and new_member:
+        # Если это Message с новым участником
         return {
             "chat": event.chat,
             "new_chat_member": {
                 "user": new_member,
-                "status": "member",
+                "status": "member",  # Статус по умолчанию
             },
             "old_chat_member": {
                 "user": event.from_user,
-                "status": "left",
+                "status": "left",  # Симулируем предыдущее состояние
             },
             "bot": event.bot,
         }
@@ -72,57 +60,64 @@ async def greet_new_user(event: ChatMemberUpdated | dict, state: FSMContext):
     Обработчик добавления нового пользователя в чат. Поддерживает объекты и словари.
     """
     try:
+        # Унификация данных
         event_data = create_event_data(event) if isinstance(event, ChatMemberUpdated) else event
 
+        # Извлечение данных
         new_chat_member = event_data["new_chat_member"]
         old_chat_member = event_data["old_chat_member"]
         chat_id = event_data["chat"].id
         bot = event_data["bot"]
         bot_id = bot.id
 
+        # Проверка статусов
         if new_chat_member["status"] == "member" and old_chat_member["status"] in {"left", "kicked"}:
             telegram_user = new_chat_member["user"]
 
+            # Пропускаем добавление бота
             if telegram_user.id == bot_id:
                 logger.debug("Бот добавлен в чат. Пропускаем обработку.")
                 return
 
             logger.debug(f"Новый пользователь {telegram_user.full_name} добавлен в чат {chat_id}.")
+            db: Session = SessionLocal()
+            try:
+                # Проверяем существование компании
+                existing_company = db.query(Company).filter_by(chat_id=str(chat_id)).first()
 
-            async with async_session() as session:
-                async with session.begin():
-                    # Проверяем существование компании
-                    existing_company = await session.execute(
-                        select(Company).filter_by(chat_id=str(chat_id))
+                # Создаём или получаем компанию и пользователя
+                user = create_or_get_company_and_user(db, telegram_user, chat_id)
+
+                if not existing_company:
+                    logger.debug(f"Компания для чата {chat_id} не найдена. Устанавливаем онбординг.")
+                    await state.storage.set_state(
+                        key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
+                        state=OnboardingState.waiting_for_company_name
                     )
-                    existing_company = existing_company.scalars().first()
-
-                    if not existing_company:
-                        logger.debug(f"Компания для чата {chat_id} не найдена. Устанавливаем онбординг.")
-                        await state.storage.set_state(
-                            key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
-                            state=OnboardingState.waiting_for_company_name
+                    await state.storage.set_data(
+                        key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
+                        data={"company_id": user.company_id}
+                    )
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=(
+                            f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
+                            "Давайте начнем с базовой информации.\nВведите название вашей компании."
                         )
-                        await state.storage.set_data(
-                            key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
-                            data={"company_id": None}
+                    )
+                else:
+                    logger.debug("Приветствие для существующей компании.")
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=(
+                            f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
+                            "Вы добавлены к текущей компании. Напишите 'Помощь', чтобы узнать, что я могу делать."
                         )
-                        await bot.send_message(
-                            chat_id=chat_id,
-                            text=(
-                                f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
-                                "Давайте начнем с базовой информации.\nВведите название вашей компании."
-                            )
-                        )
-                    else:
-                        logger.debug("Приветствие для существующей компании.")
-                        await bot.send_message(
-                            chat_id=chat_id,
-                            text=(
-                                f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
-                                "Вы добавлены к текущей компании. Напишите 'Помощь', чтобы узнать, что я могу делать."
-                            )
-                        )
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка обработки нового пользователя: {e}", exc_info=True)
+            finally:
+                db.close()
 
     except Exception as e:
         logger.error(f"Ошибка в greet_new_user: {e}", exc_info=True)

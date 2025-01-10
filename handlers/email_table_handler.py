@@ -61,12 +61,19 @@ async def handle_file_upload(message: Message, state: FSMContext):
         return
 
     document = message.document
+    file_path = os.path.join("uploads", document.file_name)
+
     try:
         bot = message.bot
-        file_path = os.path.join("uploads", document.file_name)
-        await bot.download(document.file_id, destination=file_path)
 
-        logger.info(f"Файл {document.file_name} сохранён в {file_path}.")
+        # Убедитесь, что директория существует
+        if not os.path.exists("uploads"):
+            os.makedirs("uploads", exist_ok=True)
+            logger.info("Директория 'uploads' создана.")
+
+        # Загрузка файла
+        await bot.download(document.file_id, destination=file_path)
+        logger.info(f"Файл {document.file_name} успешно сохранён в {file_path}.")
 
         # Получаем имя таблицы из состояния
         state_data = await state.get_data()
@@ -84,7 +91,12 @@ async def handle_file_upload(message: Message, state: FSMContext):
         logger.error(f"Ошибка при обработке файла {document.file_name}: {e}")
         await message.reply(f"Ошибка при обработке файла: {str(e)}")
     finally:
-        os.remove(file_path)
+        # Удаляем файл, если он существует
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info(f"Файл {file_path} успешно удалён.")
+        else:
+            logger.warning(f"Файл {file_path} не найден, удаление пропущено.")
 
 def generate_segment_table_name(company_id: int) -> str:
     """

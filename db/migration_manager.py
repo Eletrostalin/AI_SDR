@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from db.models import Migration
 
-DATABASE_URL = "postgresql+psycopg://postgres:13579033@localhost:5432/AI_SDR_stage"
+DATABASE_URL = "postgresql+psycopg://postgres:13579033@localhost:5433/AI_SDR_stage"
 
 # Настройка синхронного движка
 engine = create_engine(DATABASE_URL, echo=True)

@@ -60,13 +60,28 @@ def create_content_plan(db: Session, company_id: int, chat_id: int, description:
         return None
 
 
-def parse_date_time(send_date: str, send_time: str) -> datetime:
+def parse_date_time(send_date: str, send_time) -> datetime:
     """
     Преобразует дату и время в объект datetime.
+
+    :param send_date: Строка с датой в формате "%Y-%m-%d".
+    :param send_time: Строка с временем в формате "%H:%M:%S" или объект datetime.time/datetime.datetime.
+    :return: Объект datetime.
     """
     try:
+        # Обработка даты
         parsed_date = datetime.strptime(send_date, "%Y-%m-%d").date() if isinstance(send_date, str) else send_date
-        parsed_time = datetime.strptime(send_time, "%H:%M:%S").time() if isinstance(send_time, str) else send_time
+
+        # Обработка времени
+        if isinstance(send_time, str):
+            parsed_time = datetime.strptime(send_time, "%H:%M:%S").time()
+        elif isinstance(send_time, datetime):
+            parsed_time = send_time.time()
+        elif isinstance(send_time, date):
+            raise ValueError("send_time не может быть объектом date, ожидается time или datetime")
+        else:
+            parsed_time = send_time  # Предполагается, что это объект datetime.time
+
         return datetime.combine(parsed_date, parsed_time)
     except ValueError as e:
         logger.error(f"Ошибка преобразования даты и времени: {e}", exc_info=True)

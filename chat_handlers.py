@@ -112,6 +112,7 @@ async def greet_new_user(event: ChatMemberUpdated | dict, state: FSMContext):
                             "Пожалуйста, предоставьте эту информацию, чтобы мы могли начать работу!"
                         )
                     )
+                    await state.set_state(OnboardingState.waiting_for_company_name)
                 else:
                     logger.debug("Приветствие для существующей компании.")
                     await bot.send_message(

@@ -19,7 +19,7 @@ CREATE TABLE company_info (
     contact_phone VARCHAR(20),
     additional_info TEXT,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP
 );
 
 -- Таблица пользователей
@@ -72,7 +72,7 @@ CREATE TABLE email_tables (
     company_id INTEGER REFERENCES companies(company_id) ON DELETE CASCADE NOT NULL,
     table_name VARCHAR NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP
 );
 
 -- Таблица шаблонов

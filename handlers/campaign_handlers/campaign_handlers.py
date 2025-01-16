@@ -313,19 +313,27 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
     """
     Завершает создание кампании и сохраняет данные в базе.
     """
-    if message.text.strip().lower() not in ["да", "нет"]:
+    user_input = message.text.strip().lower()
+    logger.debug(f"Подтверждение кампании: {user_input}")
+
+    if user_input not in ["да", "нет"]:
         await message.reply("Введите 'да' для подтверждения или 'нет' для отмены.")
         return
 
-    if message.text.strip().lower() == "да":
+    if user_input == "да":
         db = SessionLocal()
         try:
+            logger.debug("Начало процесса сохранения кампании.")
             state_data = await state.get_data()
             campaign_data = state_data.get("campaign_data")
+            logger.debug(f"Данные кампании из состояния: {campaign_data}")
+
             chat_id = str(message.chat.id)
             company = get_company_by_chat_id(db, chat_id)
+            logger.debug(f"Компания найдена: {company}")
 
             if not company:
+                logger.error(f"Компания не найдена для chat_id={chat_id}")
                 await message.reply("Компания не найдена. Добавьте её перед созданием кампании.")
                 return
 
@@ -334,16 +342,22 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
             thread_name = f"Кампания: {campaign_data['campaign_name']}"
             thread_id = await create_thread(bot, chat_id, thread_name)
             logger.debug(f"Созданный thread_id: {thread_id}")
+
             if thread_id:
                 campaign_data["thread_id"] = thread_id
                 await state.update_data(campaign_data=campaign_data)
             else:
+                logger.error("Ошибка: thread_id не был создан.")
                 raise ValueError("Ошибка: thread_id не был создан.")
 
+            logger.debug(f"Сохранение темы в базу. chat_id={chat_id}, thread_id={thread_id}, thread_name={thread_name}")
             save_thread_to_db(db, chat_id, thread_id, thread_name)
+
+            logger.debug(f"Сохранение кампании в базу. company_id={company.company_id}, campaign_data={campaign_data}")
             save_campaign_to_db(db, company.company_id, campaign_data)
 
             await message.reply(f"Кампания '{campaign_data['campaign_name']}' успешно создана.")
+            logger.info(f"Кампания '{campaign_data['campaign_name']}' успешно сохранена в БД.")
 
             # Переход к созданию контентного плана
             await message.reply("Теперь создадим контентный план для этой кампании...")
@@ -354,7 +368,9 @@ async def confirm_campaign_creation(message: Message, state: FSMContext):
             await message.reply("Произошла ошибка при создании кампании.")
         finally:
             db.close()
+            logger.debug("Закрыто соединение с базой данных.")
     else:
+        logger.debug("Создание кампании отменено пользователем.")
         await message.reply("Создание кампании отменено.")
         await state.clear()
 

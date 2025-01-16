@@ -28,6 +28,7 @@ def save_campaign_to_db(db: Session, company_id: int, campaign_data: dict):
     """
     Сохраняет данные кампании в базу данных, включая сегменты.
     """
+    logger.debug(f"Начало сохранения кампании в БД. company_id={company_id}, campaign_data={campaign_data}")
     try:
         # Создаем новую кампанию с данными
         new_campaign = create_campaign(
@@ -49,6 +50,7 @@ def save_campaign_to_db(db: Session, company_id: int, campaign_data: dict):
         )
         return new_campaign
     except SQLAlchemyError as e:
-        logger.error(f"Ошибка при сохранении кампании: {e}")
+        logger.error(f"Ошибка при сохранении кампании: {e}", exc_info=True)
+        logger.debug(f"Данные, вызвавшие ошибку: company_id={company_id}, campaign_data={campaign_data}")
         db.rollback()
         raise ValueError("Ошибка при сохранении кампании в базу данных.")

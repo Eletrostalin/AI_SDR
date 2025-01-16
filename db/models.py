@@ -57,6 +57,7 @@ class Company(Base):
     templates = relationship("Templates", back_populates="company")
 
 
+
 class CompanyInfo(Base):
     __tablename__ = "company_info"
 
@@ -74,6 +75,7 @@ class CompanyInfo(Base):
 
     # Связь с Company
     company = relationship("Company", back_populates="info")
+
 
 
 
@@ -143,6 +145,8 @@ class Waves(Base):
     content_plan = relationship("ContentPlan", back_populates="waves")
     campaign = relationship("Campaigns", back_populates="waves")
     company = relationship("Company", back_populates="waves")
+
+
 
 
 class Templates(Base):

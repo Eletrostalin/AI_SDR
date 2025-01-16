@@ -76,7 +76,6 @@ class CompanyInfo(Base):
     company = relationship("Company", back_populates="info")
 
 
-
 class Campaigns(Base):
     __tablename__ = "campaigns"
 

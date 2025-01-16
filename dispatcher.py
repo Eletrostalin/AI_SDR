@@ -75,15 +75,13 @@ async def dispatch_classification(classification: dict, message: Message, state:
                 await handle_email_table_request(message, state)
             elif action_type == "view" and entity_type == "email_table":
                 await handle_view_email_table(message, state)
-            elif action_type == "view" and entity_type == "content_plan":
-                await handle_view_content_plans(message, state)
             else:
                 logger.warning(f"Не удалось обработать запрос: {classification}")
                 await message.reply("К сожалению, я не могу обработать ваш запрос. Попробуйте снова.")
         else:
             # Если тема не general
-            if action_type == "delete" and entity_type == "campaign":
-                await handle_delete_campaign_request(message, state)
+            if action_type == "view" and entity_type == "content_plan":
+                await handle_view_content_plans(message, state)
             elif action_type == "add" and entity_type == "template":
                 await start_template_creation(message, state)
             elif action_type == "add" and entity_type == "content_plan":

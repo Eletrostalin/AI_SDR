@@ -61,12 +61,25 @@ async def handle_file_upload(message: Message, state: FSMContext):
         return
 
     document = message.document
-    try:
-        bot = message.bot
-        file_path = os.path.join("uploads", document.file_name)
-        await bot.download(document.file_id, destination=file_path)
+    file_path = os.path.join("uploads", document.file_name)
 
-        logger.info(f"Файл {document.file_name} сохранён в {file_path}.")
+    try:
+        # Проверяем формат файла
+        allowed_extensions = (".csv", ".xlsx", ".xls")
+        if not document.file_name.lower().endswith(allowed_extensions):
+            await message.reply("Неподдерживаемый формат файла. Пожалуйста, загрузите CSV или Excel.")
+            return  # Завершаем выполнение, если формат неподходящий
+
+        bot = message.bot
+
+        # Убедитесь, что директория существует
+        if not os.path.exists("uploads"):
+            os.makedirs("uploads", exist_ok=True)
+            logger.info("Директория 'uploads' создана.")
+
+        # Загрузка файла
+        await bot.download(document.file_id, destination=file_path)
+        logger.info(f"Файл {document.file_name} успешно сохранён в {file_path}.")
 
         # Получаем имя таблицы из состояния
         state_data = await state.get_data()
@@ -77,14 +90,28 @@ async def handle_file_upload(message: Message, state: FSMContext):
             raise ValueError("Название таблицы сегментации отсутствует в состоянии.")
 
         # Обрабатываем файл
-        await process_email_table(file_path, segment_table_name, bot, message)
+        is_processed = await process_email_table(file_path, segment_table_name, bot, message)
+
+        if is_processed:
+            # Сообщение об успешной обработке только если процесс завершён успешно
+            await message.reply(f"Файл обработан успешно и сохранён в таблицу: `{segment_table_name}`.")
+        else:
+            # Если обработка не удалась, выводим соответствующее сообщение
+            logger.info(f"Файл {file_path} обработан с ошибками. Сообщение об успешной обработке не отправлено.")
+
+        # Очищаем состояние только при завершении обработки
         await state.clear()
-        await message.reply(f"Файл обработан успешно и сохранён в таблицу: `{segment_table_name}`.")
+
     except Exception as e:
         logger.error(f"Ошибка при обработке файла {document.file_name}: {e}")
         await message.reply(f"Ошибка при обработке файла: {str(e)}")
     finally:
-        os.remove(file_path)
+        # Удаляем файл, если он существует
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info(f"Файл {file_path} успешно удалён.")
+        else:
+            logger.warning(f"Файл {file_path} не найден, удаление пропущено.")
 
 def generate_segment_table_name(company_id: int) -> str:
     """

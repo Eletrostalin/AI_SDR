@@ -19,7 +19,7 @@ CREATE TABLE company_info (
     contact_phone VARCHAR(20),
     additional_info TEXT,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-    updated_at TIMESTAMP DEFAULT NOW() ON UPDATE NOW()
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Таблица пользователей
@@ -72,7 +72,7 @@ CREATE TABLE email_tables (
     company_id INTEGER REFERENCES companies(company_id) ON DELETE CASCADE NOT NULL,
     table_name VARCHAR NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-    updated_at TIMESTAMP DEFAULT NOW() ON UPDATE NOW() NOT NULL
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Таблица шаблонов
@@ -104,3 +104,22 @@ CREATE TABLE migrations (
     migration_name VARCHAR NOT NULL UNIQUE,
     applied_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
+
+-- Триггер для автоматического обновления updated_at
+CREATE OR REPLACE FUNCTION update_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_company_info
+BEFORE UPDATE ON company_info
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp();
+
+CREATE TRIGGER trigger_update_email_tables
+BEFORE UPDATE ON email_tables
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp();

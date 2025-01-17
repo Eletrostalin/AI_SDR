@@ -30,13 +30,14 @@ from handlers.onboarding_handler import (
     handle_missing_data,
     show_collected_data
 )
+from handlers.tamplate_handlers.tamplate_handler import handle_user_input, confirm_template
 from states.states import (
     OnboardingState,
     AddEmailSegmentationState,
     EditCompanyState,
     AddCampaignState,
     AddContentPlanState,
-    AddCompanyState
+    AddCompanyState, TemplateStates
 )
 
 from logger import logger
@@ -129,3 +130,15 @@ async def handle_add_content_plan_states(message: Message, state: FSMContext, cu
     elif current_state == AddContentPlanState.waiting_for_confirmation.state:
         # Обработка подтверждения контентного плана
         await confirm_content_plan(message, state)
+
+async def handle_template_states(message: Message, state: FSMContext, current_state: str):
+    """
+    Обрабатывает состояния создания шаблонов.
+    """
+
+    if current_state == TemplateStates.waiting_for_description.state:
+        await handle_user_input(message, state)
+    elif current_state == TemplateStates.waiting_for_confirmation.state:
+        await confirm_template(message, state)
+    # elif current_state == TemplateStates.refining_template.state:
+    #     await refine_template(message, state)

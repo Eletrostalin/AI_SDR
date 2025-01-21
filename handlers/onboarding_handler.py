@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from config import OPENAI_API_KEY
 from db.db import SessionLocal
 from db.models import CompanyInfo
+from promts.onboarding_promt import NEUTRAL_REFINEMENT_PROMPT, FIRST_QUESTION_PROMPT, EXTRACTOR_PROMPT
 from states.states import OnboardingState
 from langchain.agents import Tool
 from langchain.chains import LLMChain
@@ -17,50 +18,20 @@ import logging
 logger = logging.getLogger(__name__)
 router = Router()
 
-
+# Инициализация OpenAI модели
 llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, temperature=0.7)
 
-# Инструмент для извлечения сущностей
-extractor_prompt = ChatPromptTemplate.from_template("""
-Извлеки следующую информацию из текста:
-1. Название компании
-2. Отрасль/сфера деятельности
-3. Регион/география работы
-4. Основной email
-5. Контактный телефон
-6. Дополнительная информация
-
-Текст: {input}
-
-Ответь в формате JSON:
-{{
-    "company_name": "Название компании",
-    "industry": "Отрасль/сфера деятельности",
-    "region": null,
-    "contact_email": null,
-    "contact_phone": null,
-    "additional_info": null
-}}
-
-Если информация отсутствует, заполни поле значением `null`.
-Не додумывай данные и не делай предположений.
-""")
+# Настройка инструментов LangChain
+extractor_prompt = ChatPromptTemplate.from_template(EXTRACTOR_PROMPT)
 extractor_chain = LLMChain(llm=llm, prompt=extractor_prompt)
 extractor_tool = Tool(name="Extractor", func=extractor_chain.run, description="Извлекает сущности из текста")
 
-# Инструмент для первого запроса
-first_question_prompt = ChatPromptTemplate.from_template("""
-Поля {missing_fields} не были заполнены. Сформулируй вежливый запрос к пользователю, чтобы он предоставил недостающую информацию одним текстом.
-Будь лаконичен и учти что беседа уже идет и не нужно здороваться.
-""")
+first_question_prompt = ChatPromptTemplate.from_template(FIRST_QUESTION_PROMPT)
 first_question_chain = LLMChain(llm=llm, prompt=first_question_prompt)
 first_question_tool = Tool(name="FirstQuestionGenerator", func=first_question_chain.run,
                            description="Генерирует первый запрос к пользователю")
 
-# Инструмент для уточнений
-neutral_refinement_prompt = ChatPromptTemplate.from_template("""
-На основе недостающих данных {missing_fields}, сформулируй запрос к пользователю, чтобы уточнить эту информацию. Будь лаконичен и учти что беседа уже идет и не нужно здороваться.
-""")
+neutral_refinement_prompt = ChatPromptTemplate.from_template(NEUTRAL_REFINEMENT_PROMPT)
 neutral_question_chain = LLMChain(llm=llm, prompt=neutral_refinement_prompt)
 neutral_question_tool = Tool(name="NeutralQuestionGenerator", func=neutral_question_chain.run,
                              description="Генерирует уточняющий запрос")

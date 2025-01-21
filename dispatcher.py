@@ -8,7 +8,7 @@ from handlers.campaign_handlers.campaign_handlers import handle_add_campaign
 from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from handlers.content_plan_handlers.content_plan_view import handle_view_content_plans
 from handlers.email_table_handler import handle_email_table_request, handle_view_email_table
-from handlers.tamplate_handlers.tamplate_handler import start_template_creation
+from handlers.tamplate_handlers.tamplate_handler import add_template
 from logger import logger
 
 from sqlalchemy.orm import Session
@@ -83,7 +83,7 @@ async def dispatch_classification(classification: dict, message: Message, state:
             if action_type == "view" and entity_type == "content_plan":
                 await handle_view_content_plans(message, state)
             elif action_type == "add" and entity_type == "template":
-                await start_template_creation(message, state)
+                await add_template(message, state)
             elif action_type == "add" and entity_type == "content_plan":
                 await handle_add_content_plan(message, state)  # Допустим, content_plan можно создавать в других темах
             else:

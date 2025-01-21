@@ -144,6 +144,8 @@ class Waves(Base):
     company = relationship("Company", back_populates="waves")
 
 
+
+
 class Templates(Base):
     __tablename__ = "templates"
 

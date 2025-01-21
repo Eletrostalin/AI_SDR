@@ -1,185 +1,229 @@
 from aiogram import Router, types
-from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
+from aiogram.filters import Command, StateFilter
+from sqlalchemy.orm import Session
+from langchain.agents import Tool
+from langchain.chains import LLMChain
+from langchain.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
 
-from classifier import client
-from handlers.campaign_handlers.campaign_handlers import router
-from db.db_company import get_company_by_chat_id
-from db.db_content_plan import get_campaign_by_thread_id
-from db.models import Templates
 from db.db import SessionLocal
-import openai  # Функция взаимодействия с GPT
+from db.models import Templates, Waves, Company, CompanyInfo, ContentPlan
+from states.states import TemplateStates
+from config import OPENAI_API_KEY
+import json
 import logging
 
-from promts.template_haandler import generate_email_template_prompt
-from states.states import TemplateStates
 
 logger = logging.getLogger(__name__)
+router = Router()
 
-def convert_object_to_dict(obj):
-    """
-    Преобразует объект SQLAlchemy в словарь.
-    """
-    return {column.name: getattr(obj, column.name) for column in obj.__table__.columns}
+# Настройка LLM
+llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, temperature=0.7)
 
+# 1. Инструмент для запроса данных у пользователя
+invite_prompt = ChatPromptTemplate.from_template("""
+Ты AI-ассистент. Попроси пользователя тактично ввести пожелания для генерации шаблонов письма. 
+Формулируй просьбу по-разному каждый раз, чтобы пользователь не замечал однотипности.
+Отвечай только одной строкой текста без дополнительных структур JSON или метаданных.
+""")
+invite_chain = LLMChain(llm=llm, prompt=invite_prompt)
+invite_tool = Tool(
+    name="InviteTool",
+    func=lambda: invite_chain.invoke({}),  # Теперь invoke() и без аргументов
+    description="Просит пользователя ввести пожелания для шаблона."
+)
 
+# 2. Инструмент для анализа пользовательского ввода
+context_analysis_prompt = ChatPromptTemplate.from_template("""
+Мы ожидаем текст с пожеланиями для шаблона письма. Текст: {input}
+
+Если текст соответствует ожиданиям, ответь "valid".
+Если текст не соответствует, ответь "invalid" и кратко объясни, почему.
+""")
+context_analysis_chain = LLMChain(llm=llm, prompt=context_analysis_prompt)
+context_analysis_tool = Tool(
+    name="ContextAnalysis",
+    func=context_analysis_chain.run,
+    description="Анализирует ввод."
+)
+
+# 3. Инструмент для генерации текста письма (использует данные компании и контентного плана)
+template_generation_prompt = ChatPromptTemplate.from_template("""
+Сгенерируй текст письма для компании "{company_name}" (сфера: {industry}, регион: {region}).
+
+Контентный план: {content_plan}
+Тема письма: {subject}
+Цель письма: {goal}
+Целевая аудитория: {audience}
+Тональность: {tone}
+
+Пожелания пользователя:
+{user_request}
+
+Ответь в виде письма с приветствием, основным текстом и заключением.
+""")
+template_generation_chain = LLMChain(llm=llm, prompt=template_generation_prompt)
+template_generation_tool = Tool(
+    name="TemplateGenerator",
+    func=template_generation_chain.run,
+    description="Генерирует текст письма с учетом компании и контентного плана."
+)
+
+# Обработчик команды /add_template
 @router.message(Command("add_template"))
-async def start_template_creation(message: types.Message, state: FSMContext):
+async def add_template(message: types.Message, state: FSMContext):
     """
-    Начало создания шаблона.
+    Запускает процесс создания шаблона.
     """
     db = SessionLocal()
     chat_id = str(message.chat.id)
-    thread_id = message.message_thread_id  # Получаем thread_id из сообщения
 
     try:
-        company = get_company_by_chat_id(db, chat_id)
-        campaign = get_campaign_by_thread_id(db, thread_id=thread_id)
-
-        company_data = convert_object_to_dict(company) if company else None
-        campaign_data = convert_object_to_dict(campaign) if campaign else None
-
-        logger.debug(f"Компания: {company_data}, Кампания: {campaign_data}")
-
-        if not company or not campaign:
-            await message.reply(
-                "Компания или кампания не найдены. Убедитесь, что вы находитесь в правильном чате кампании."
-            )
+        # Получаем компанию по chat_id
+        company = db.query(Company).filter_by(chat_id=chat_id).first()
+        if not company:
+            await message.reply("Компания для данного чата не найдена.")
             return
 
+        # Получаем данные о компании из CompanyInfo
+        company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
+        if not company_info:
+            await message.reply("Информация о компании не найдена.")
+            return
+
+        # Получаем текущую волну (Wave) для компании
+        wave = db.query(Waves).filter_by(company_id=company.company_id).first()
+        if not wave:
+            await message.reply("Волна с темой письма для данной компании не найдена.")
+            return
+
+        # Получаем описание контентного плана
+        content_plan = db.query(ContentPlan).filter_by(company_id=company.company_id).first()
+        content_plan_desc = content_plan.description if content_plan else "Нет данных"
+
+        subject = wave.subject
+
+        # Сохраняем данные в FSM
         await state.update_data(
-            company_id=company.company_id,
-            campaign_id=campaign.campaign_id,
-            company_name=company.name or "Название компании не указано",
-            campaign_name=campaign.campaign_name,
+            company_name=company_info.company_name,
+            industry=company_info.industry,
+            region=company_info.region,
+            contact_email=company_info.contact_email,
+            contact_phone=company_info.contact_phone or "Не указан",
+            additional_info=company_info.additional_info or "Нет дополнительной информации",
+            subject=subject,
+            content_plan=content_plan_desc,
         )
 
-        await message.reply("Введите тему для шаблона.")
-        await state.set_state(TemplateStates.waiting_for_subject)
+        # Генерируем сообщение-приглашение
+        try:
+            invite_response = invite_tool.func()
+            invite_message = (
+                invite_response["text"]
+                if isinstance(invite_response, dict) and "text" in invite_response
+                else invite_response
+            )
+        except Exception as lc_error:
+            logger.error(f"Ошибка при генерации приглашения: {lc_error}")
+            await message.reply("Не удалось сгенерировать приглашение. Попробуйте позже.")
+            return
+
+        await message.reply(invite_message)
+        await state.set_state(TemplateStates.waiting_for_description)
+
+    except Exception as e:
+        logger.error(f"Ошибка при инициализации шаблона: {e}")
+        await message.reply("Произошла ошибка при инициализации. Попробуйте позже.")
     finally:
         db.close()
-
-
-@router.message(StateFilter(TemplateStates.waiting_for_subject))
-async def handle_subject(message: types.Message, state: FSMContext):
-    """
-    Обрабатывает ввод темы письма.
-    """
-    subject = message.text.strip()
-    if not subject:
-        await message.reply("Тема не может быть пустой. Пожалуйста, введите тему для шаблона.")
-        return
-
-    # Сохраняем тему в состояние
-    await state.update_data(subject=subject)
-
-    await message.reply("Введите описание или пожелания для шаблона.")
-    await state.set_state(TemplateStates.waiting_for_description)
 
 
 @router.message(StateFilter(TemplateStates.waiting_for_description))
-async def generate_template(message: types.Message, state: FSMContext):
+async def handle_user_input(message: types.Message, state: FSMContext):
     """
-    Обрабатывает ввод описания или пожеланий пользователя.
+    Обрабатывает ввод пользователя и сразу переходит к генерации шаблона.
     """
-    user_request = message.text.strip()
+    user_input = message.text.strip()
+
+    logger.debug(f"Получен пользовательский ввод: {user_input}")
+
+    # ❌ Убрана проверка через ContextAnalysis
+
+    # Устанавливаем стандартные параметры
+    analysis_data = {
+        "goal": "информирование",
+        "audience": "широкая аудитория",
+        "tone": "дружелюбный"
+    }
+
+    # Сохранение данных в состояние
+    await state.update_data(user_request=user_input)
+
+    # Достаем из состояния данные компании
     state_data = await state.get_data()
-    company_name = state_data["company_name"]
-    campaign_name = state_data["campaign_name"]
 
-    # Генерация шаблона через GPT
-    try:
-        template_content = generate_email_template(
-            company_name=company_name,
-            campaign_name=campaign_name,
-            user_request=user_request,
-        )
-        logger.debug(f"Сгенерированный шаблон: {template_content}")
+    logger.debug(f"Данные перед генерацией шаблона: {state_data}")
 
-        # Сохраняем данные в состояние
-        await state.update_data(user_request=user_request, template_content=template_content)
-        # Получаем тему из состояния
-        state_data = await state.get_data()
-        subject = state_data.get("subject", "Нет темы")
+    # Генерация текста письма
+    template_response = template_generation_tool.invoke({
+        "input": {
+            "company_name": state_data["company_name"],
+            "industry": state_data["industry"],
+            "region": state_data["region"],
+            "content_plan": state_data["content_plan"],
+            "subject": state_data["subject"],
+            "goal": analysis_data["goal"],
+            "audience": analysis_data["audience"],
+            "tone": analysis_data["tone"],
+            "user_request": user_input,
+        }
+    })
 
-        # Формируем сообщение с темой и шаблоном
-        await message.reply(
-            f"Вот предложенный шаблон:\n\n"
-            f"Тема: {subject}\n\n"
-            f"{template_content}\n\n"
-            f"Утвердить? (да/нет)"
-        )
+    logger.debug(f"Сгенерированный шаблон: {template_response}")
 
-        await state.set_state(TemplateStates.waiting_for_confirmation)
-    except Exception as e:
-        logger.error(f"Ошибка при генерации шаблона: {e}", exc_info=True)
-        await message.reply("Произошла ошибка при генерации шаблона. Попробуйте позже.")
+    # Сохранение результата
+    await state.update_data(template_content=template_response)
+
+    # Отправка пользователю
+    await message.reply(f"Сгенерированный шаблон:\n\n{template_response}\n\nПодтвердите? (да/нет)")
+    await state.set_state(TemplateStates.waiting_for_confirmation)
 
 
-@router.message(StateFilter(TemplateStates.waiting_for_confirmation))
+@router.message(TemplateStates.waiting_for_confirmation)
 async def confirm_template(message: types.Message, state: FSMContext):
     """
-    Обрабатывает подтверждение или отмену шаблона.
+    Подтверждает или отклоняет шаблон.
     """
-    db = SessionLocal()
-    try:
-        if message.text.strip().lower() == "да":
-            state_data = await state.get_data()
-            company_id = state_data["company_id"]
-            campaign_id = state_data["campaign_id"]
-            subject = state_data["subject"]
-            user_request = state_data["user_request"]
-            template_content = state_data["template_content"]
+    if message.text.strip().lower() == "да":
+        state_data = await state.get_data()
+        db = SessionLocal()
 
-            # Сохраняем шаблон в базу данных
-            new_template = Templates(
-                company_id=company_id,
-                campaign_id=campaign_id,
-                subject=subject,  # Сохраняем тему письма
-                user_request=user_request,
-                template_content=template_content,
-            )
-            db.add(new_template)
-            db.commit()
+        # Получаем компанию по имени из состояния
+        company_info = db.query(CompanyInfo).filter_by(company_name=state_data["company_name"]).first()
+        if not company_info:
+            await message.reply("Ошибка: не удалось найти компанию по сохраненному имени.")
+            return
 
-            await message.reply(
-                f"Шаблон с темой '{subject}' успешно сохранён!\n\n"
-                f"Тема: {subject}\n\n"
-                f"Шаблон:\n{template_content}"
-            )
-        else:
-            state_data = await state.get_data()
-            subject = state_data.get("subject", "Нет темы")
-            template_content = state_data.get("template_content", "Нет текста")
+        company_id = company_info.company_id
 
-            await message.reply(
-                f"Создание шаблона отменено.\n\nТема: {subject}\n\nШаблон:\n{template_content}"
-            )
-        await state.clear()
-    except Exception as e:
-        logger.error(f"Ошибка при создании шаблона: {e}", exc_info=True)
-        await message.reply("Произошла ошибка при сохранении шаблона.")
-    finally:
+        # Получаем кампанию для компании
+        campaign = db.query(Waves).filter_by(company_id=company_id).first()
+        campaign_id = campaign.campaign_id if campaign else None
+
+        new_template = Templates(
+            company_id=company_id,
+            campaign_id=campaign_id,
+            subject=state_data["subject"],
+            template_content=state_data["template_content"],
+            user_request=state_data["user_request"],
+        )
+
+        db.add(new_template)
+        db.commit()
         db.close()
 
-
-def generate_email_template(company_name: str, campaign_name: str, user_request: str) -> str:
-    """
-    Генерирует шаблон письма с помощью OpenAI GPT.
-
-    :param company_name: Название компании.
-    :param campaign_name: Название кампании.
-    :param user_request: Пожелания пользователя.
-    :return: Сгенерированный текст шаблона.
-    """
-    # Используем функцию для получения текста промта
-    prompt = generate_email_template_prompt(company_name, campaign_name, user_request)
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        raise RuntimeError(f"Ошибка при генерации шаблона: {e}")
+        await message.reply("Шаблон успешно сохранён!")
+        await state.clear()
+    else:
+        await message.reply("Попробуйте снова.")

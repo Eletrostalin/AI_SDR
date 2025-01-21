@@ -12,7 +12,8 @@ from dispatcher import dispatch_classification
 from states.states import OnboardingState
 from logger import logger
 from states.states_handlers import handle_onboarding_states, handle_edit_company_states, \
-    handle_add_email_segmentation_states, handle_add_content_plan_states, handle_add_campaign_states
+    handle_add_email_segmentation_states, handle_add_content_plan_states, handle_add_campaign_states, \
+    handle_template_states
 
 router = Router()
 
@@ -112,6 +113,7 @@ async def greet_new_user(event: ChatMemberUpdated | dict, state: FSMContext):
                             "Пожалуйста, предоставьте эту информацию, чтобы мы могли начать работу!"
                         )
                     )
+                    await state.set_state(OnboardingState.waiting_for_company_name)
                 else:
                     logger.debug("Приветствие для существующей компании.")
                     await bot.send_message(
@@ -190,6 +192,8 @@ async def handle_message(message: Message, state: FSMContext):
         await handle_add_content_plan_states(message, state, current_state)
     elif current_state.startswith("AddEmailSegmentationState:"):
         await handle_add_email_segmentation_states(message, state, current_state)
+    elif current_state.startswith("TemplateStates:"):  # <=== Добавляем обработку шаблонов
+        await handle_template_states(message, state, current_state)
     else:
         logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
         await message.reply("Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")

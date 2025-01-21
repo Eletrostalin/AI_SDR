@@ -57,8 +57,8 @@ class DeleteCampaignState(StatesGroup):
 # Состояния для работы с шаблонами
 class TemplateStates(StatesGroup):
     """
-    Состояния для создания шаблонов.
+    Состояния для создания и подтверждения шаблонов.
     """
-    waiting_for_description = State()  # Ожидание описания или пожеланий пользователя
-    waiting_for_subject = State()
+    waiting_for_description = State()  # Ожидание ввода пожеланий
     waiting_for_confirmation = State()  # Ожидание подтверждения шаблона
+    refining_template = State()  # Уточнение пожеланий для доработки шаблона

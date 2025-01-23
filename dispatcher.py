@@ -8,6 +8,7 @@ from handlers.campaign_handlers.campaign_handlers import handle_add_campaign
 from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from handlers.content_plan_handlers.content_plan_view import handle_view_content_plans
 from handlers.email_table_handler import handle_email_table_request, handle_view_email_table
+from handlers.template_handlers.template_delete import delete_template
 from handlers.template_handlers.template_handler import add_template
 from handlers.template_handlers.templates_view import view_templates
 from logger import logger
@@ -87,6 +88,8 @@ async def dispatch_classification(classification: dict, message: Message, state:
                 await add_template(message, state)
             elif action_type == "view" and entity_type == "template":
                 await view_templates(message, state)
+            elif action_type == "delete" and entity_type == "template":
+                await delete_template(message, state)
             elif action_type == "add" and entity_type == "content_plan":
                 await handle_add_content_plan(message, state)  # Допустим, content_plan можно создавать в других темах
             else:

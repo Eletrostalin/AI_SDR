@@ -28,8 +28,6 @@ template_generation_prompt = ChatPromptTemplate.from_template("""
 Ответь в виде письма с приветствием, основным текстом и заключением.
 """)
 
-from langchain.prompts import ChatPromptTemplate
-
 template_edit_prompt = ChatPromptTemplate.from_template("""
 Ты – профессиональный редактор email-рассылок. Твоя задача – внести изменения в шаблон письма на основе комментариев пользователя.
 

@@ -136,12 +136,12 @@ class Waves(Base):
     send_time = Column(DateTime, nullable=False)  # Время отправки
     send_date = Column(DateTime, nullable=False)  # Дата отправки
     subject = Column(String, nullable=False)  # Тема
-    template_id = Column(Integer, ForeignKey("templates.template_id"), nullable=True)  # ID шаблона
 
     # Связи
     content_plan = relationship("ContentPlan", back_populates="waves")
     campaign = relationship("Campaigns", back_populates="waves")
     company = relationship("Company", back_populates="waves")
+    template = relationship("Templates", uselist=False, back_populates="wave")
 
 
 
@@ -152,6 +152,7 @@ class Templates(Base):
     template_id = Column(Integer, primary_key=True, autoincrement=True)
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
     campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"), nullable=False)
+    wave_id = Column(Integer, ForeignKey("waves.wave_id"), nullable=False, unique=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     subject = Column(String, nullable=False)
     user_request = Column(Text, nullable=False)
@@ -160,6 +161,8 @@ class Templates(Base):
     # Связь с Company и Campaign
     company = relationship("Company", back_populates="templates")
     campaign = relationship("Campaigns", back_populates="templates")
+    # Связь с шаблоном (one-to-one)
+    wave = relationship("Waves", back_populates="template")
 
 
 class Migration(Base):

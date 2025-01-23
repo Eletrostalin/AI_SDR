@@ -30,7 +30,8 @@ from handlers.onboarding_handler import (
     handle_missing_data,
     show_collected_data
 )
-from handlers.tamplate_handlers.tamplate_handler import handle_user_input, confirm_template
+from handlers.template_handlers.template_handler import handle_user_input, confirm_template
+from handlers.template_handlers.templates_edit import handle_template_edit
 from states.states import (
     OnboardingState,
     AddEmailSegmentationState,
@@ -140,5 +141,5 @@ async def handle_template_states(message: Message, state: FSMContext, current_st
         await handle_user_input(message, state)
     elif current_state == TemplateStates.waiting_for_confirmation.state:
         await confirm_template(message, state)
-    # elif current_state == TemplateStates.refining_template.state:
-    #     await refine_template(message, state)
+    elif current_state == TemplateStates.waiting_for_edit_input.state:
+        await handle_template_edit(message, state)

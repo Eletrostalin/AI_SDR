@@ -62,3 +62,5 @@ class TemplateStates(StatesGroup):
     waiting_for_description = State()  # Ожидание ввода пожеланий
     waiting_for_confirmation = State()  # Ожидание подтверждения шаблона
     refining_template = State()  # Уточнение пожеланий для доработки шаблона
+    waiting_for_edit_input = State()
+    waiting_for_confirmation = State() # Ожидание пользовательского ввода для редактирования

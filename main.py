@@ -10,9 +10,11 @@ from handlers.campaign_handlers.campaign_delete_handler import (
 )
 from admin.admin_commands import router as home_router
 from handlers.company_handlers.company_handlers import router as company_router
+from handlers.template_handlers.templates_edit import router as edit_template_router
 from aiogram.filters import Command
 from handlers.onboarding_handler import router as onboarding_router
-from aiogram.types import CallbackQuery  # Для обработки инлайн-кнопок
+from handlers.template_handlers.template_handler import router as add_template_router
+from handlers.template_handlers.templates_view import router as view_template_router
 from bot import bot
 from config import TARGET_CHAT_ID
 from db.migration_manager import apply_migrations  # Импорт функции миграций
@@ -49,9 +51,11 @@ def setup_routers(dp: Dispatcher):
     dp.include_router(company_router)
     dp.include_router(campaign_router)
 
-    # Регистрация маршрутизатора для онбординга
-
     dp.include_router(onboarding_router)
+
+    dp.include_router(edit_template_router)
+    dp.include_router(add_template_router)
+    dp.include_router(view_template_router)
 
     # Регистрация команды для удаления кампании
     dp.message.register(

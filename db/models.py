@@ -7,14 +7,6 @@ from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 
-EMAIL_SEGMENT_COLUMNS = [
-    "name", "tax_id", "registration_date", "address", "region", "status",
-    "msp_registry", "director_name", "director_position", "phone_number",
-    "email", "website", "primary_activity", "other_activities", "licenses",
-    "revenue", "balance", "net_profit_or_loss", "arbitration_defendant",
-    "employee_count", "branch_count"
-]
-
 
 class User(Base):
     __tablename__ = "users"
@@ -123,7 +115,6 @@ class ContentPlan(Base):
     wave_count = Column(Integer, nullable=False, default=0)
     description = Column(Text, nullable=True)
     campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"), nullable=False)
-    status = Column(Boolean, default=True, nullable=False)  # Теперь булево
 
     # Связи
     waves = relationship("Waves", back_populates="content_plan")
@@ -141,7 +132,6 @@ class Waves(Base):
     send_time = Column(DateTime, nullable=False)
     send_date = Column(DateTime, nullable=False)
     subject = Column(String, nullable=False)
-    status = Column(Boolean, default=True, nullable=False)  # Теперь булево
 
     # Связи
     content_plan = relationship("ContentPlan", back_populates="waves")

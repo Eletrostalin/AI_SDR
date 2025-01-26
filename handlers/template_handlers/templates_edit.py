@@ -5,7 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from agents.tempate_agent import async_template_edit_tool
 from db.db import SessionLocal
-from db.models import Waves, Templates
+from db.models import Waves, Templates, Campaigns, ChatThread
 from logger import logger
 from states.states import TemplateStates
 
@@ -105,45 +105,85 @@ async def handle_template_edit(message: types.Message, state: FSMContext):
         db.close()
 
 
-@router.callback_query(lambda c: c.data.startswith("confirm_edit:"))
-async def confirm_template_edit(callback: CallbackQuery, state: FSMContext):
+@router.message(TemplateStates.waiting_for_confirmation)
+async def confirm_template(message: types.Message, state: FSMContext):
     """
-    Подтверждает и сохраняет измененный шаблон в базу данных.
+    Подтверждает или отклоняет шаблон: сохраняет его или отправляет в режим редактирования.
     """
-    user_id = callback.from_user.id
+    user_id = message.from_user.id
+    chat_id = message.chat.id
     state_data = await state.get_data()
-    template_id = int(callback.data.split(":")[1])
-
     db = SessionLocal()
 
-    try:
-        # Получаем новый текст из FSM
-        new_template_text = state_data.get("edited_template")
+    logger.info(f"✅ [User {user_id}] Начал подтверждение шаблона...")
 
-        # Проверяем, есть ли такой шаблон в базе
-        template = db.query(Templates).filter_by(template_id=template_id).first()
-        if not template:
-            await callback.message.reply("Ошибка: шаблон не найден.")
+    try:
+        if message.text.strip().lower() == "нет":
+            await message.reply("✏️ Введите комментарии для изменения шаблона.")
+            await state.set_state(TemplateStates.waiting_for_edit_input)  # Перевод в состояние редактирования
             return
 
-        # Обновляем текст шаблона в базе
-        template.template_content = new_template_text
+        if message.text.strip().lower() != "да":
+            await message.reply("⚠️ Пожалуйста, ответьте 'да' для подтверждения или 'нет' для редактирования.")
+            return
+
+        # Проверяем, что в FSMContext есть нужные данные
+        required_fields = ["company_id", "subject", "template_content", "user_request", "wave_id"]
+        missing_fields = [field for field in required_fields if field not in state_data]
+
+        if missing_fields:
+            logger.error(f"❌ [User {user_id}] Ошибка: отсутствуют данные в FSMContext: {missing_fields}")
+            await message.reply("Произошла ошибка. Отсутствуют внутренние данные. Попробуйте снова.")
+            return
+
+        company_id = state_data["company_id"]
+        wave_id = state_data["wave_id"]
+
+        logger.info(f"🔍 [User {user_id}] company_id: {company_id}, wave_id: {wave_id}")
+
+        # 🔍 Получаем thread_id из ChatThread по chat_id
+        chat_thread = db.query(ChatThread).filter_by(chat_id=chat_id).first()
+        if not chat_thread:
+            logger.error(f"❌ [User {user_id}] ChatThread не найден для chat_id: {chat_id}")
+            await message.reply("Ошибка: не удалось найти кампанию, связанную с этим чатом.")
+            return
+
+        thread_id = chat_thread.thread_id
+        logger.info(f"📌 [User {user_id}] Найден thread_id: {thread_id}")
+
+        # 🔍 Получаем кампанию по thread_id
+        campaign = db.query(Campaigns).filter_by(thread_id=thread_id).first()
+        if not campaign:
+            logger.error(f"❌ [User {user_id}] Кампания не найдена для thread_id: {thread_id}")
+            await message.reply("Ошибка: не удалось найти кампанию, связанную с этим чатом.")
+            return
+
+        campaign_id = campaign.campaign_id
+        logger.info(f"📢 [User {user_id}] Найдена кампания: {campaign_id}")
+
+        # ✅ Создаём новый шаблон с привязкой к волне
+        new_template = Templates(
+            company_id=company_id,
+            campaign_id=campaign_id,
+            wave_id=wave_id,
+            subject=state_data["subject"],
+            template_content=state_data["template_content"],
+            user_request=state_data["user_request"],
+        )
+
+        db.add(new_template)
         db.commit()
+        logger.info(f"✅ [User {user_id}] Шаблон сохранён! Тема: {state_data['subject']}, Волна: {wave_id}")
 
-        logger.info(f"✅ [User {user_id}] подтвердил и сохранил обновленный шаблон {template_id}.")
-
-        # Отправляем пользователю подтверждение
-        await callback.message.reply("✅ Шаблон успешно обновлён!")
-
-        # Сбрасываем состояние
+        await message.reply("✅ Шаблон успешно сохранён и привязан к волне!")
         await state.clear()
 
     except Exception as e:
-        logger.error(f"❌ Ошибка при сохранении шаблона {template_id}: {e}", exc_info=True)
-        await callback.message.reply("Произошла ошибка. Попробуйте снова.")
+        logger.error(f"❌ [User {user_id}] Ошибка при сохранении шаблона: {e}", exc_info=True)
+        await message.reply("Произошла ошибка при сохранении шаблона. Попробуйте позже.")
+
     finally:
         db.close()
-
 
 @router.callback_query(lambda c: c.data.startswith("retry_edit:"))
 async def retry_template_edit(callback: CallbackQuery, state: FSMContext):

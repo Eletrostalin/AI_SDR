@@ -62,3 +62,14 @@ class TemplateStates(StatesGroup):
     waiting_for_description = State()  # Ожидание ввода пожеланий
     waiting_for_confirmation = State()  # Ожидание подтверждения шаблона
     refining_template = State()  # Уточнение пожеланий для доработки шаблона
+    waiting_for_edit_input = State()
+
+
+
+class TemplateDeleteStates(StatesGroup):
+    """
+    Состояния для удаления шаблонов.
+    """
+    selecting_content_plan = State()  # Выбор контент-плана для удаления шаблона
+    selecting_wave = State()  # Выбор волны для удаления шаблона
+    confirming_deletion = State()  # Подтверждение удаления шаблона

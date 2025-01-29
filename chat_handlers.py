@@ -15,6 +15,7 @@ from states.states_handlers import handle_onboarding_states, handle_edit_company
     handle_add_email_segmentation_states, handle_add_content_plan_states, handle_add_campaign_states, \
     handle_template_states
 
+
 router = Router()
 
 

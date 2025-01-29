@@ -1,20 +1,16 @@
-import json
-
 from aiogram.filters import StateFilter
 from admin.ThreadManager import create_thread
 from db.db_thread import save_campaign_to_db, save_thread_to_db
-from db.segmentation import EMAIL_SEGMENT_COLUMNS
 from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
-from promts.campaign_promt import CAMPAIGN_DATA_PROMPT
+from promts.campaign_promt import CAMPAIGN_DATA_PROMPT, EMAIL_SEGMENT_COLUMNS
 from states.states import AddCampaignState
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
-from utils.segment_utils import extract_filters_from_text
 from utils.utils import send_to_model
 
 router = Router()
@@ -41,8 +37,8 @@ async def process_campaign_name(message: Message, state: FSMContext):
 
     await state.update_data(campaign_name=campaign_name)
     await message.reply(
-        "Теперь укажите дополнительные данные о кампании: дата начала, дата конца и фильтры сегментации "
-        "Введите данные в любом порядке. Например: 'начало 01.01.2024, конец 31.01.2024. сегментация по региону москва, для всех у кого есть мобильный"
+        "Теперь укажите дополнительные данные о кампании: дата начала, дата конца, параметры (например, ЦУ или регион). "
+        "Введите данные в любом порядке. Например: 'начало 01.01.2024, конец 31.01.2024, регион Москва'."
     )
     await state.set_state(AddCampaignState.waiting_for_campaign_data)
 
@@ -67,18 +63,19 @@ async def process_campaign_data(message: Message, state: FSMContext):
 
         # Формируем запрос для модели
         prompt = CAMPAIGN_DATA_PROMPT.format(user_input=user_input)
-        logger.debug(f"Сформированный промт для модели:\n{prompt}")
+        logger.debug(f"Сформированный промт для модели: {prompt}")
 
         # Отправляем запрос в модель
         response = send_to_model(prompt)
-        logger.debug(f"📥 Ответ модели (сырой): {response}")
+        logger.debug(f"Ответ модели: {response}")
 
-        # Логируем полный ответ модели перед парсингом
+        # Обработка ответа от модели
+        import json
         try:
             campaign_data = json.loads(response)
-            logger.debug(f"📌 Декодированный JSON-ответ модели: {json.dumps(campaign_data, indent=2, ensure_ascii=False)}")
+            logger.debug(f"Успешно декодирован JSON: {campaign_data}")
         except json.JSONDecodeError as e:
-            logger.error(f"❌ Ошибка декодирования JSON из ответа модели: {e}")
+            logger.error(f"Ошибка декодирования JSON из ответа модели: {e}")
             await message.reply("Ошибка обработки данных. Попробуйте уточнить запрос.")
             return
 
@@ -86,9 +83,8 @@ async def process_campaign_data(message: Message, state: FSMContext):
         state_data = await state.get_data()
 
         # Валидация данных
-        logger.debug(f"⏳ Запуск валидации данных: {json.dumps(campaign_data, indent=2, ensure_ascii=False)}")
         campaign_data = validate_model_response(campaign_data, state_data)
-        logger.debug(f"✅ Результат валидации: {json.dumps(campaign_data, indent=2, ensure_ascii=False)}")
+        logger.debug(f"Результат валидации: {campaign_data}")
 
         if not campaign_data:
             logger.error("Валидация завершилась неуспешно.")
@@ -105,7 +101,7 @@ async def process_campaign_data(message: Message, state: FSMContext):
             missing_fields.append("фильтры сегментации")
 
         if missing_fields:
-            logger.debug(f"⚠️ Недостающие данные: {missing_fields}")
+            logger.debug(f"Недостающие данные: {missing_fields}")
             await state.update_data(campaign_data=campaign_data)
             await message.reply(
                 f"Необходимо указать: {', '.join(missing_fields)}. Пожалуйста, уточните недостающие данные."
@@ -119,20 +115,21 @@ async def process_campaign_data(message: Message, state: FSMContext):
             return
 
         # Если все данные собраны
-        logger.debug("✅ Все данные успешно собраны. Обновляем состояние.")
+        logger.debug("Все данные успешно собраны. Обновляем состояние.")
         await state.update_data(campaign_data=campaign_data)
         await message.reply(
             f"Проверьте данные кампании:\n"
             f"Название: {campaign_data.get('campaign_name')}\n"
             f"Дата начала: {campaign_data['start_date']}\n"
             f"Дата конца: {campaign_data['end_date']}\n"
-            f"Фильтры: {json.dumps(campaign_data['filters'], indent=2, ensure_ascii=False)}\n"
+            f"Фильтры: {campaign_data['filters']}\n"
+            f"Параметры: {campaign_data.get('params')}\n\n"
             "Введите 'да' для подтверждения или 'нет' для отмены."
         )
         await state.set_state(AddCampaignState.waiting_for_confirmation)
 
     except Exception as e:
-        logger.error(f"❌ Ошибка обработки данных кампании: {e}", exc_info=True)
+        logger.error(f"Ошибка обработки данных кампании: {e}")
         await message.reply("Произошла ошибка при обработке данных. Попробуйте снова.")
 
 
@@ -192,18 +189,24 @@ async def process_filters(message: Message, state: FSMContext):
         state_data = await state.get_data()
         campaign_data = state_data.get("campaign_data", {})
 
-        # Отправляем текст в модель для извлечения фильтров
-        extracted_filters = extract_filters_from_text(user_input)
-        logger.debug(f"Извлеченные фильтры: {extracted_filters}")
+        # Проверяем корректность ввода фильтров
+        filters = {}
+        for pair in user_input.split(","):
+            if ":" not in pair:
+                await message.reply(
+                    "Некорректный формат фильтра. Используйте формат 'ключ: значение'. Например: 'region: Москва'."
+                )
+                return
+            key, value = map(str.strip, pair.split(":", 1))
+            if key not in EMAIL_SEGMENT_COLUMNS:
+                await message.reply(
+                    f"Недопустимый ключ фильтра '{key}'. Допустимые ключи: {', '.join(EMAIL_SEGMENT_COLUMNS)}."
+                )
+                return
+            filters[key] = value
 
-        if not extracted_filters:
-            await message.reply(
-                "Не удалось определить фильтры. Убедитесь, что запрос корректный, и попробуйте снова."
-            )
-            return
-
-        # Обновляем состояние с новыми фильтрами
-        campaign_data["filters"] = extracted_filters
+        # Сохраняем фильтры в состоянии
+        campaign_data["filters"] = filters
         await state.update_data(campaign_data=campaign_data)
 
         # Проверяем, все ли данные собраны
@@ -214,7 +217,8 @@ async def process_filters(message: Message, state: FSMContext):
                 f"Название: {campaign_data.get('campaign_name')}\n"
                 f"Дата начала: {campaign_data['start_date']}\n"
                 f"Дата конца: {campaign_data['end_date']}\n"
-                f"Фильтры: {json.dumps(campaign_data.get('filters'), indent=2, ensure_ascii=False)}\n"
+                f"Фильтры: {campaign_data.get('filters')}\n"
+                f"Параметры: {campaign_data.get('params', {})}\n\n"
                 "Введите 'да' для подтверждения или 'нет' для отмены."
             )
             await state.set_state(AddCampaignState.waiting_for_confirmation)
@@ -228,7 +232,7 @@ async def process_filters(message: Message, state: FSMContext):
                 await state.set_state(AddCampaignState.waiting_for_end_date)
 
     except Exception as e:
-        logger.error(f"Ошибка обработки фильтров: {e}", exc_info=True)
+        logger.error(f"Ошибка обработки фильтров: {e}")
         await message.reply("Произошла ошибка при обработке фильтров. Попробуйте снова.")
 
 
@@ -388,6 +392,7 @@ def validate_model_response(response: dict, state_data: dict) -> dict:
             "start_date": response.get("start_date", "").strip(),
             "end_date": response.get("end_date", "").strip(),
             "filters": response.get("filters", {}),
+            "params": response.get("params", {}),
         }
 
         # Проверяем формат дат
@@ -407,6 +412,9 @@ def validate_model_response(response: dict, state_data: dict) -> dict:
         if not isinstance(campaign_data["filters"], dict):
             logger.warning(f"Поле 'filters' не является словарем: {campaign_data['filters']}")
             campaign_data["filters"] = {}
+        if not isinstance(campaign_data["params"], dict):
+            logger.warning(f"Поле 'params' не является словарем: {campaign_data['params']}")
+            campaign_data["params"] = {}
 
         logger.debug(f"Результат валидации: {campaign_data}")
         return campaign_data

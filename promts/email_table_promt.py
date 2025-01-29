@@ -1,4 +1,4 @@
-from db.segmentation import EMAIL_SEGMENT_COLUMNS
+from db.models import EMAIL_SEGMENT_COLUMNS
 
 
 def generate_column_mapping_prompt(user_columns: list) -> str:

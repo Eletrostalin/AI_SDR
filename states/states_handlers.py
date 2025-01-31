@@ -30,7 +30,7 @@ from handlers.onboarding_handler import (
     handle_missing_data,
     show_collected_data
 )
-from handlers.tamplate_handlers.tamplate_handler import handle_user_input, confirm_template
+from handlers.template_handlers.template_handler import handle_user_input, confirm_template
 from states.states import (
     OnboardingState,
     AddEmailSegmentationState,

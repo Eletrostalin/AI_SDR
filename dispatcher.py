@@ -8,7 +8,7 @@ from handlers.campaign_handlers.campaign_handlers import handle_add_campaign
 from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from handlers.content_plan_handlers.content_plan_view import handle_view_content_plans
 from handlers.email_table_handler import handle_email_table_request, handle_view_email_table
-from handlers.tamplate_handlers.tamplate_handler import add_template
+from handlers.template_handlers.template_handler import add_template
 from logger import logger
 
 from sqlalchemy.orm import Session

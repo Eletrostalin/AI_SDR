@@ -141,7 +141,9 @@ async def confirm_content_plan(message: Message, state: FSMContext):
             # Получаем тему
             chat_thread = get_chat_thread(db, chat_id, thread_id)
             if not chat_thread:
+                logger.error(f"Ошибка: тема, связанная с thread_id={thread_id}, не найдена.")
                 await message.reply("Ошибка: тема, связанная с этим thread_id, не найдена.")
+                db.close()
                 return
 
             logger.debug(
@@ -151,10 +153,18 @@ async def confirm_content_plan(message: Message, state: FSMContext):
             # Получаем кампанию
             campaign = get_campaign_by_thread_id(db, thread_id)
             if not campaign:
+                logger.error(f"Ошибка: кампания, связанная с thread_id={thread_id}, не найдена.")
                 await message.reply("Ошибка: кампания, связанная с этой темой, не найдена.")
+                db.close()
                 return
 
             logger.debug(f"Кампания найдена: campaign_id={campaign.campaign_id}, name={campaign.campaign_name}")
+
+            # Логируем перед созданием контентного плана
+            logger.debug(
+                f"Создаем контентный план с параметрами: company_id={campaign.company_id}, chat_id={chat_id}, "
+                f"description={description}, wave_count={wave_count}, campaign_id={campaign.campaign_id}"
+            )
 
             # Создаем контентный план
             content_plan = create_content_plan(
@@ -166,6 +176,16 @@ async def confirm_content_plan(message: Message, state: FSMContext):
                 campaign_id=campaign.campaign_id
             )
 
+            # Проверяем, успешно ли создан контентный план
+            if not content_plan:
+                logger.error("Ошибка: create_content_plan вернул None. Контентный план не был создан.")
+                await message.reply("Ошибка при создании контентного плана. Попробуйте снова.")
+                db.rollback()
+                db.close()
+                return
+
+            logger.debug(f"Контентный план успешно создан: content_plan_id={content_plan.content_plan_id}")
+
             # Добавляем волны
             for wave in waves:
                 # Проверка и преобразование send_time
@@ -175,12 +195,17 @@ async def confirm_content_plan(message: Message, state: FSMContext):
                 elif isinstance(send_time, datetime):
                     send_time = send_time.time()
                 else:
+                    logger.error(f"Ошибка в формате времени волны: {send_time}")
                     raise ValueError(f"Неподдерживаемый формат времени: {send_time}")
 
                 # Преобразование даты и времени в datetime
                 send_date = wave["send_date"]
                 send_datetime = datetime.strptime(
                     f"{send_date} {send_time}", "%Y-%m-%d %H:%M:%S"
+                )
+
+                logger.debug(
+                    f"Добавляем волну: send_date={send_date}, send_time={send_time}, subject={wave['subject']}"
                 )
 
                 add_wave(
@@ -196,6 +221,9 @@ async def confirm_content_plan(message: Message, state: FSMContext):
                 )
 
             db.commit()
+            logger.info(
+                f"Контентный план '{description}' успешно создан для кампании '{campaign.campaign_name}'!"
+            )
             await message.reply(
                 f"Контентный план '{description}' успешно создан для кампании '{campaign.campaign_name}'!"
             )

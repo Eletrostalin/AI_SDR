@@ -6,12 +6,9 @@ logger = logging.getLogger(__name__)
 
 # Колонки, которые используются в динамических таблицах
 DYNAMIC_EMAIL_TABLE_COLUMNS = [
+    Column("table_name", String, nullable=True),
     Column("name", String, nullable=True),
-    Column("tax_id", String, nullable=True),
-    Column("registration_date", String, nullable=True),
-    Column("address", String, nullable=True),
     Column("region", String, nullable=True),
-    Column("status", String, nullable=True),
     Column("msp_registry", String, nullable=True),
     Column("director_name", String, nullable=True),
     Column("director_position", String, nullable=True),
@@ -19,12 +16,7 @@ DYNAMIC_EMAIL_TABLE_COLUMNS = [
     Column("email", String, nullable=True),
     Column("website", String, nullable=True),
     Column("primary_activity", String, nullable=True),
-    Column("other_activities", String, nullable=True),
-    Column("licenses", String, nullable=True),
     Column("revenue", String, nullable=True),
-    Column("balance", String, nullable=True),
-    Column("net_profit_or_loss", String, nullable=True),
-    Column("arbitration_defendant", String, nullable=True),
     Column("employee_count", String, nullable=True),
     Column("branch_count", String, nullable=True)
 ]

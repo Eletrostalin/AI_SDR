@@ -1,11 +1,53 @@
+import pandas as pd
 from sqlalchemy import Table, MetaData, insert, func
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 import logging
+from db.models import EmailTable, Campaigns
+
+from db.db import engine, SessionLocal
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+
+def process_table_operations(df: pd.DataFrame, segment_table_name: str, chat_id: str, message, file_name) -> bool:
+    """
+    Открывает сессию, создаёт таблицу и сохраняет данные в БД.
+    """
+    db: Session = SessionLocal()
+    try:
+        from db.models import EmailTable, Company
+
+        df.loc[:, 'table_name'] = file_name
+
+        # Получение компании по chat_id
+        company = db.query(Company).filter(Company.chat_id == chat_id).first()
+        if not company:
+            message.reply("Компания не найдена. Убедитесь, что вы зарегистрировали свою компанию.")
+            return False
+
+        # Проверяем и создаем запись в EmailTable
+        if not create_email_table_record(
+                db,
+                company_id=company.company_id,
+                table_name=segment_table_name,
+                description="Таблица сегментации email"
+        ):
+            message.reply("Ошибка при добавлении записи в сводную таблицу.")
+            logger.error(f"Ошибка при создании записи для таблицы: {segment_table_name}")
+            return False
+
+        # Сохранение данных в БД
+        if save_data_to_db(df.to_dict(orient="records"), segment_table_name, db):
+            message.reply("Данные из таблицы успешно обработаны и сохранены.")
+            logger.info(f"Данные успешно сохранены в таблицу: {segment_table_name}")
+            return True
+        else:
+            message.reply("Ошибка при сохранении данных в базу.")
+            logger.error(f"Ошибка при сохранении данных в таблицу: {segment_table_name}")
+            return False
+    finally:
+        db.close()
 
 def save_data_to_db(data: list, table_name: str, db: Session):
     """
@@ -31,7 +73,6 @@ def save_data_to_db(data: list, table_name: str, db: Session):
         logger.error(f"Ошибка при сохранении данных в таблицу {table_name}: {e}", exc_info=True)
         db.rollback()
         return False
-
 
 def check_table_exists(db: Session, table_name: str) -> bool:
     """
@@ -75,7 +116,6 @@ def get_table_data(db: Session, table_name: str, limit: int = 1000) -> list:
         logger.error(f"Ошибка при извлечении данных из таблицы {table_name}: {e}", exc_info=True)
         return []
 
-
 def create_email_table_record(db: Session, company_id: int, table_name: str, description: str = None) -> bool:
     """
     Создает или обновляет запись в сводной таблице email_tables.
@@ -87,8 +127,6 @@ def create_email_table_record(db: Session, company_id: int, table_name: str, des
     :return: Успешность операции.
     """
     try:
-        from db.models import EmailTable
-
         # Проверяем, существует ли уже запись с таким именем таблицы
         existing_record = db.query(EmailTable).filter(EmailTable.table_name == table_name).first()
 
@@ -114,3 +152,12 @@ def create_email_table_record(db: Session, company_id: int, table_name: str, des
         logger.error(f"Ошибка при добавлении или обновлении записи в EmailTable: {e}", exc_info=True)
         db.rollback()
         return False
+
+def get_table_by_campaign(campaign: Campaigns) -> str | None:
+    """Определяет таблицу, связанную с кампанией"""
+    db = SessionLocal()
+    try:
+        table = db.query(EmailTable).filter_by(company_id=campaign.company_id).first()
+        return table.table_name if table else None
+    finally:
+        db.close()

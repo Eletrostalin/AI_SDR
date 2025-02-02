@@ -2,9 +2,9 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-
+from db.db import SessionLocal
 from logger import logger
-from db.models import Campaigns, ChatThread
+from db.models import Campaigns, ChatThread, Waves
 
 
 def create_campaign(
@@ -116,3 +116,16 @@ def delete_campaign(db: Session, campaign_id: int) -> None:
         db.commit()
     else:
         raise ValueError(f"Кампания с ID {campaign_id} не найдена.")
+
+def get_campaign_by_thread_id(thread_id: int) -> Campaigns:
+    """Получает кампанию, связанную с данным thread_id"""
+    db = SessionLocal()
+    try:
+        campaign = db.query(Campaigns).filter_by(thread_id=thread_id).first()
+        return campaign
+    finally:
+        db.close()
+
+def get_campaign_by_wave(wave: Waves) -> Campaigns | None:
+    """Получает кампанию, связанную с волной"""
+    return wave.campaign if wave else None

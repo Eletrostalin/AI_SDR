@@ -1,5 +1,7 @@
 from sqlalchemy.orm import Session
 from datetime import datetime, date
+
+from db.db import SessionLocal
 from db.models import Campaigns, ChatThread, ContentPlan, Waves
 from logger import logger
 from sqlalchemy.exc import SQLAlchemyError
@@ -142,3 +144,11 @@ def get_content_plans_by_campaign_id(db: Session, campaign_id: int):
     except Exception as e:
         logger.error(f"Ошибка при получении контентных планов для campaign_id={campaign_id}: {e}", exc_info=True)
         return []
+
+def get_wave_by_id(wave_id: int) -> Waves | None:
+    """Получает объект волны по ID"""
+    db = SessionLocal()
+    try:
+        return db.query(Waves).filter_by(wave_id=wave_id).first()
+    finally:
+        db.close()

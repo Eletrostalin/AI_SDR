@@ -1,10 +1,8 @@
 import pandas as pd
 from sqlalchemy import Table, MetaData, insert, func
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 import logging
-from db.models import EmailTable
+from db.models import EmailTable, Campaigns
 
 from db.db import engine, SessionLocal
 from sqlalchemy.orm import Session
@@ -154,3 +152,12 @@ def create_email_table_record(db: Session, company_id: int, table_name: str, des
         logger.error(f"Ошибка при добавлении или обновлении записи в EmailTable: {e}", exc_info=True)
         db.rollback()
         return False
+
+def get_table_by_campaign(campaign: Campaigns) -> str | None:
+    """Определяет таблицу, связанную с кампанией"""
+    db = SessionLocal()
+    try:
+        table = db.query(EmailTable).filter_by(company_id=campaign.company_id).first()
+        return table.table_name if table else None
+    finally:
+        db.close()

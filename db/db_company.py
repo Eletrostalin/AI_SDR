@@ -1,5 +1,7 @@
 from sqlalchemy.orm import Session
-from db.models import Company, CompanyInfo
+
+from db.db import SessionLocal
+from db.models import Company, CompanyInfo, Campaigns
 from logger import logger
 
 
@@ -38,20 +40,14 @@ def get_company_info_by_company_id(db: Session, company_id: int) -> dict:
     }
 
 
-def create_company_if_not_exists(db: Session, telegram_id: str, chat_id: str) -> Company:
-    """
-    Создаёт новую запись о компании, если её не существует.
-    """
-    company = get_company_by_chat_id(db, chat_id)
-    if not company:
-        company = Company(
-            telegram_id=telegram_id,
-            chat_id=chat_id,
-        )
-        db.add(company)
-        db.commit()
-        db.refresh(company)
-    return company
+def get_company_by_campaign(campaign: Campaigns):
+    """Получает компанию, связанную с кампанией."""
+    db = SessionLocal()
+    try:
+        company = db.query(Company).filter_by(company_id=campaign.company_id).first()
+        return company
+    finally:
+        db.close()
 
 
 def save_company_info(db: Session, company_id: int, details: dict) -> CompanyInfo:
@@ -71,22 +67,13 @@ def save_company_info(db: Session, company_id: int, details: dict) -> CompanyInf
     db.refresh(company_info)
     return company_info
 
-
-def update_company_info(db: Session, company_id: int, new_details: dict) -> None:
-    """
-    Обновляет информацию о компании в таблице CompanyInfo.
-
-    :param db: Сессия базы данных.
-    :param company_id: ID компании для обновления.
-    :param new_details: Новый JSON-объект с деталями компании.
-    """
-    company_info = db.query(CompanyInfo).filter_by(company_id=company_id).first()
-    if company_info:
-        company_info.details = new_details
-        db.commit()
-        db.refresh(company_info)
-    else:
-        raise ValueError(f"Информация о компании с ID {company_id} не найдена.")
+def get_company_info_by_id(company_id: int) -> CompanyInfo | None:
+    """Получает информацию о компании по company_id"""
+    db = SessionLocal()
+    try:
+        return db.query(CompanyInfo).filter_by(company_id=company_id).first()
+    finally:
+        db.close()
 
 
 def validate_and_merge_company_info(

@@ -1,6 +1,7 @@
 import json
 import logging
 
+from db.db import SessionLocal
 from db.segmentation import FILTER_TYPES
 from utils.utils import send_to_model, logger  # Функция отправки в модель
 
@@ -88,3 +89,18 @@ def extract_filters_from_text(user_input: str) -> dict:
     except (json.JSONDecodeError, ValueError) as e:
         logger.error(f"❌ Ошибка обработки JSON: {e}")
         return {}
+
+def get_matching_record_count(table_name: str, segments: list) -> int:
+    """
+    Получает количество записей в таблице, соответствующих сегментам.
+    """
+    db = SessionLocal()
+    try:
+        query = f"""
+        SELECT COUNT(*) FROM {table_name}
+        WHERE segment IN :segments
+        """
+        result = db.execute(query, {"segments": tuple(segments)}).scalar()
+        return result or 0
+    finally:
+        db.close()

@@ -24,8 +24,8 @@ template_generation_prompt = ChatPromptTemplate.from_template("""
 
 Пожелания пользователя:
 {user_request}
-
-Ответь в виде письма с приветствием, основным текстом и заключением.
+Контактные данные для подписи отправителя {contact_email}, {contact_phone}
+ответь на русском используя для персонализации данные в переменных
 """)
 
 template_edit_prompt = ChatPromptTemplate.from_template("""

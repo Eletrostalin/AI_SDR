@@ -1,13 +1,11 @@
 import asyncio
 
-from aiogram import Router
 from langchain.agents import Tool
 from langchain.chains import LLMChain
 from langchain_openai import ChatOpenAI
 from promts.template_promt import template_generation_prompt, context_analysis_prompt, invite_prompt, \
     template_edit_prompt
 from config import OPENAI_API_KEY
-import json
 import logging
 
 

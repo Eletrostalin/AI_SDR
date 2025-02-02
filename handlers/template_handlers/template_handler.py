@@ -37,13 +37,16 @@ async def add_template(message: types.Message, state: FSMContext):
             await message.reply("Компания для данной кампании не найдена.")
             return
 
-        # Получаем информацию о компании (где хранится industry)
+        # Получаем информацию о компании (где хранится industry, email, phone)
         company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
-        industry = company_info.industry if company_info else None
-
-        if not industry:
-            await message.reply("Отрасль компании не найдена. Проверьте заполненные данные.")
+        if not company_info:
+            await message.reply("Информация о компании не найдена. Проверьте заполненные данные.")
             return
+
+        industry = company_info.industry
+        company_name = company_info.company_name
+        contact_email = company_info.contact_email
+        contact_phone = company_info.contact_phone
 
         # Получаем список контент-планов для данной кампании
         content_plans = db.query(ContentPlan).filter_by(campaign_id=campaign.campaign_id).all()
@@ -65,8 +68,10 @@ async def add_template(message: types.Message, state: FSMContext):
 
         # ✅ Сохраняем `company_id` в FSMContext (его не было!)
         await state.update_data(
-            company_id=company.company_id,  # Добавлено
-            company_name=company.name,
+            company_id=company.company_id,
+            company_name=company_name,
+            contact_email=contact_email,
+            contact_phone=contact_phone,
             campaign_id=campaign.campaign_id,
             industry=industry
         )
@@ -169,6 +174,7 @@ async def handle_user_input(message: types.Message, state: FSMContext):
     """
     user_input = message.text.strip()
     state_data = await state.get_data()
+    print(state_data)
 
     # Подставляем тему письма из выбранной волны
     subject = state_data.get("subject")
@@ -193,6 +199,8 @@ async def handle_user_input(message: types.Message, state: FSMContext):
         template_response = await async_template_generation_tool({
             "company_name": state_data["company_name"],
             "industry": state_data["industry"],
+            "contact_email": state_data["contact_email"],
+            "contact_phone": state_data["contact_phone"],
             "content_plan": state_data["content_plan_desc"],
             "subject": subject,
             "user_request": user_input,

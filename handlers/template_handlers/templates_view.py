@@ -168,3 +168,14 @@ async def view_wave(callback: CallbackQuery, state: FSMContext):
         await callback.message.reply("Произошла ошибка. Попробуйте снова.")
     finally:
         db.close()
+
+
+@router.callback_query(lambda c: c.data == "cancel_edit")
+async def cancel_edit(callback: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает отказ от редактирования шаблона.
+    """
+    await callback.message.reply("Редактирование отменено. Если нужно что-то изменить позже, используйте /view_templates.")
+    await state.clear()  # Очищаем состояние, если оно было установлено
+
+    logger.info(f"🚫 [User {callback.from_user.id}] отменил редактирование шаблона.")

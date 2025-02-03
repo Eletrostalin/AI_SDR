@@ -12,7 +12,6 @@ from admin.admin_commands import router as home_router
 from handlers.company_handlers.company_handlers import router as company_router
 from aiogram.filters import Command
 from handlers.onboarding_handler import router as onboarding_router
-from aiogram.types import CallbackQuery  # Для обработки инлайн-кнопок
 from bot import bot
 from config import TARGET_CHAT_ID
 from db.migration_manager import apply_migrations  # Импорт функции миграций

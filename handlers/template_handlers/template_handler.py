@@ -39,6 +39,7 @@ async def add_template(message: types.Message, state: FSMContext):
 
         # Получаем информацию о компании (где хранится industry)
         company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
+        print(company_info)
         industry = company_info.industry if company_info else None
 
         if not industry:

@@ -7,14 +7,6 @@ from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 
-EMAIL_SEGMENT_COLUMNS = [
-    "name", "tax_id", "registration_date", "address", "region", "status",
-    "msp_registry", "director_name", "director_position", "phone_number",
-    "email", "website", "primary_activity", "other_activities", "licenses",
-    "revenue", "balance", "net_profit_or_loss", "arbitration_defendant",
-    "employee_count", "branch_count"
-]
-
 class User(Base):
     __tablename__ = "users"
 
@@ -150,14 +142,16 @@ class Templates(Base):
     template_id = Column(Integer, primary_key=True, autoincrement=True)
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
     campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"), nullable=False)
+    wave_id = Column(Integer, ForeignKey("waves.wave_id"), nullable=True)  # Добавляем wave_id
     created_at = Column(DateTime, default=func.now(), nullable=False)
     subject = Column(String, nullable=False)
     user_request = Column(Text, nullable=False)
     template_content = Column(Text, nullable=False)
 
-    # Связь с Company и Campaign
+    # Связи
     company = relationship("Company", back_populates="templates")
     campaign = relationship("Campaigns", back_populates="templates")
+    wave = relationship("Waves", foreign_keys=[wave_id])
 
 
 class Migration(Base):

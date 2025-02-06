@@ -1,20 +1,20 @@
 import asyncio
 from aiogram import Dispatcher
+from aiogram.filters import Command
 from aiogram.fsm.storage.memory import MemoryStorage
 from logger import logger
-from chat_handlers import router as chat_router
-from handlers.campaign_handlers.campaign_handlers import router as campaign_router  # Маршрутизатор кампаний
 from handlers.campaign_handlers.campaign_delete_handler import (
     handle_delete_campaign_request,
     handle_campaign_deletion_callback,  # Обработчик инлайн-кнопок для удаления кампаний
 )
+from chat_handlers import router as chat_router
 from admin.admin_commands import router as home_router
 from handlers.company_handlers.company_handlers import router as company_router
-from aiogram.filters import Command
 from handlers.onboarding_handler import router as onboarding_router
+from handlers.template_handlers.template_handler import router as template_router
+from handlers.campaign_handlers.campaign_handlers import router as campaign_router
 from bot import bot
 from config import TARGET_CHAT_ID
-from db.migration_manager import apply_migrations  # Импорт функции миграций
 
 
 async def main():
@@ -23,7 +23,7 @@ async def main():
 
     # Применение миграций перед запуском
     logger.info("Применение миграций...")
-    apply_migrations()
+    #apply_migrations()
     logger.info("Миграции успешно применены.")
 
     dp = Dispatcher(storage=MemoryStorage())
@@ -47,6 +47,7 @@ def setup_routers(dp: Dispatcher):
     dp.include_router(chat_router)
     dp.include_router(company_router)
     dp.include_router(campaign_router)
+    dp.include_router(template_router)
 
     # Регистрация маршрутизатора для онбординга
 

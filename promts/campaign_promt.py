@@ -1,9 +1,6 @@
 EMAIL_SEGMENT_COLUMNS = [
-    "name", "tax_id", "registration_date", "address", "region", "status",
-    "msp_registry", "director_name", "director_position", "phone_number",
-    "email", "website", "primary_activity", "other_activities", "licenses",
-    "revenue", "balance", "net_profit_or_loss", "arbitration_defendant",
-    "employee_count", "branch_count"
+    "name", "region", "msp_registry", "director_name", "director_position",
+    "phone_number", "email", "website", "primary_activity", "revenue", "employee_count"
 ]
 
 CAMPAIGN_DATA_PROMPT = """
@@ -12,11 +9,7 @@ CAMPAIGN_DATA_PROMPT = """
 1. Дата начала (start_date) в формате ДД.ММ.ГГГГ. Если не указан год, подставь текущий. Если дата не ясна, оставь поле пустым.
 2. Дата окончания (end_date) в формате ДД.ММ.ГГГГ. Если не указан год, подставь текущий. Если дата не ясна, оставь поле пустым.
 3. Обязательные фильтры сегментации (filters) как словарь с ключами из списка:
-"name", "tax_id", "registration_date", "address", "region", "status",
-    "msp_registry", "director_name", "director_position", "phone_number",
-    "email", "website", "primary_activity", "other_activities", "licenses",
-    "revenue", "balance", "net_profit_or_loss", "arbitration_defendant",
-    "employee_count", "branch_count".
+"name", "region", "msp_registry", "director_name", "director_position", "phone_number", "email", "website", "primary_activity", "revenue", "employee_count"
 4. Дополнительные параметры (params) как словарь.
 
 Ответ должен быть строго в формате JSON. Если что-то невозможно определить, оставь поле пустым. Пример:

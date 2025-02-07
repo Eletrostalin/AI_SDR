@@ -10,17 +10,16 @@ BASE_PROMPT = """
 }}.
 
 Примеры:
-- "Добавить новую кампанию": {{"action_type": "add", "entity_type": "campaign"}}
+- "Добавим новую кампанию": {{"action_type": "add", "entity_type": "campaign"}}
 - "Удалить шаблон": {{"action_type": "delete", "entity_type": "template"}}
 - "Хочу контент план на месяц": {{"action_type": "view", "entity_type": "content_plan"}}
 - "Создать контент план для кампании": {{"action_type": "add", "entity_type": "content_plan"}}
-- "Показать контент план для моего бизнеса": {{"action_type": "view", "entity_type": "content_plan"}}
+- "Показать контент план  бизнеса": {{"action_type": "view", "entity_type": "content_plan"}}
 - "Удалить контент план": {{"action_type": "delete", "entity_type": "content_plan"}}
-- "Digital-агентство 'Атвинта' занимается дизайном..." или любой другой текст о компании: {{"action_type": "add", "entity_type": "company"}}
-- "Удалить компанию ExampleCorp": {{"action_type": "delete", "entity_type": "company"}}
-- "Удалить всю информацию о моей компании": {{"action_type": "delete", "entity_type": "company"}}
-- "Показать данные компании": {{"action_type": "view", "entity_type": "company"}}
-- "Изменить информацию о компании": {{"action_type": "edit", "entity_type": "company"}}
+- "Удали компанию ExampleCorp": {{"action_type": "delete", "entity_type": "company"}}
+- "Удалим всю информацию о моей компании": {{"action_type": "delete", "entity_type": "company"}}
+- "Покажи данные компании": {{"action_type": "view", "entity_type": "company"}}
+- "Измени информацию о компании": {{"action_type": "edit", "entity_type": "company"}}
 - "Показать таблицу с email": {{"action_type": "view", "entity_type": "email_table"}}
 - "Добавить сегмент по Москве": {{"action_type": "add", "entity_type": "segment"}}
 - "Удалить сегмент по руководителям": {{"action_type": "delete", "entity_type": "segment"}}
@@ -28,5 +27,5 @@ BASE_PROMPT = """
 - "Изменить сегмент лидов": {{"action_type": "edit", "entity_type": "segment"}}
 - "Непонятный запрос": {{"action_type": "unknown", "entity_type": "unknown"}}
 
-Теперь проанализируй следующий текст: {input_text}
+Теперь проанализируй текст: {input_text}
 """

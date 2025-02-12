@@ -1,7 +1,8 @@
 BASE_PROMPT = """
 Ты помощник для классификации пользовательских запросов. Твоя задача — анализировать текст и определять два параметра:
 1. Тип действия (action_type): возможные значения: "add", "edit", "delete", "view".
-2. Тип сущности (entity_type): возможные значения: "campaign", "template", "email_table", "content_plan", "company", "segment".
+2. Тип сущности (entity_type): возможные значения: "campaign", "template", "email_table", "content_plan", "company",
+"segment", "drafts"
 
 Если в тексте не удалось однозначно определить действие или сущность, верни:
 {{
@@ -25,6 +26,7 @@ BASE_PROMPT = """
 - "Удалить сегмент по руководителям": {{"action_type": "delete", "entity_type": "segment"}}
 - "Показать сегменты компании": {{"action_type": "view", "entity_type": "segment"}}
 - "Изменить сегмент лидов": {{"action_type": "edit", "entity_type": "segment"}}
+- "Добавим черновик": {{"action_type": "add", "entity_type": "draft"}}
 - "Непонятный запрос": {{"action_type": "unknown", "entity_type": "unknown"}}
 
 Теперь проанализируй текст: {input_text}

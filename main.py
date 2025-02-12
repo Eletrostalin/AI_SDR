@@ -13,6 +13,7 @@ from handlers.company_handlers.company_handlers import router as company_router
 from handlers.onboarding_handler import router as onboarding_router
 from handlers.template_handlers.template_handler import router as template_router
 from handlers.campaign_handlers.campaign_handlers import router as campaign_router
+from handlers.draft_handlers.draft_handler import router as draft_router
 from bot import bot
 from config import TARGET_CHAT_ID
 
@@ -48,6 +49,7 @@ def setup_routers(dp: Dispatcher):
     dp.include_router(company_router)
     dp.include_router(campaign_router)
     dp.include_router(template_router)
+    dp.include_router(draft_router)
 
     # Регистрация маршрутизатора для онбординга
 

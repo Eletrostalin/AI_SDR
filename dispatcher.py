@@ -7,6 +7,7 @@ from handlers.company_handlers.company_handlers import handle_edit_company
 from handlers.campaign_handlers.campaign_handlers import handle_add_campaign
 from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from handlers.content_plan_handlers.content_plan_view import handle_view_content_plans
+from handlers.draft_handlers.draft_handler import add_drafts
 from handlers.email_table_handler import handle_email_table_request, handle_view_email_table
 from handlers.template_handlers.template_handler import add_template
 from logger import logger
@@ -86,6 +87,8 @@ async def dispatch_classification(classification: dict, message: Message, state:
                 await add_template(message, state)
             elif action_type == "add" and entity_type == "content_plan":
                 await handle_add_content_plan(message, state)  # Допустим, content_plan можно создавать в других темах
+            elif action_type == "add" and entity_type == "draft":
+                await add_drafts(message, state)
             else:
                 await message.reply(
                     "Эта операция доступна только в теме general. Пожалуйста, перейдите в основную тему и повторите запрос."

@@ -25,33 +25,46 @@ async def add_template(message: types.Message, state: FSMContext):
     thread_id = message.message_thread_id  # Получаем thread_id из сообщения
 
     try:
+        logger.info(f"📨 [User {message.from_user.id}] Запуск add_template, thread_id={thread_id}")
+
         # Получаем кампанию по thread_id
         campaign = db.query(Campaigns).filter_by(thread_id=thread_id).first()
         if not campaign:
             await message.reply("Кампания, связанная с этим чатом, не найдена.")
+            logger.warning(f"❌ Кампания не найдена для thread_id={thread_id}")
             return
+
+        logger.debug(f"✅ Найдена кампания: {campaign.campaign_id} ({campaign.campaign_name})")
 
         # Получаем компанию, связанную с кампанией
         company = db.query(Company).filter_by(company_id=campaign.company_id).first()
         if not company:
             await message.reply("Компания для данной кампании не найдена.")
+            logger.warning(f"❌ Компания не найдена для campaign_id={campaign.campaign_id}")
             return
+
+        logger.debug(f"✅ Найдена компания: {company.company_id} ({company.name})")
 
         # Получаем информацию о компании (где хранится industry)
         company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
-        print(company_info)
         industry = company_info.industry if company_info else None
 
         if not industry:
             await message.reply("Отрасль компании не найдена. Проверьте заполненные данные.")
+            logger.warning(f"⚠️ Отрасль компании не найдена для company_id={company.company_id}")
             return
+
+        logger.debug(f"✅ Определена отрасль компании: {industry}")
 
         # Получаем список контент-планов для данной кампании
         content_plans = db.query(ContentPlan).filter_by(campaign_id=campaign.campaign_id).all()
 
         if not content_plans:
             await message.reply("Для этой кампании нет доступных контентных планов.")
+            logger.warning(f"⚠️ Нет контент-планов для campaign_id={campaign.campaign_id}")
             return
+
+        logger.debug(f"📌 Найдено {len(content_plans)} контент-планов для campaign_id={campaign.campaign_id}")
 
         # Создаем инлайн-кнопки для выбора контентного плана
         keyboard = InlineKeyboardBuilder()
@@ -66,16 +79,16 @@ async def add_template(message: types.Message, state: FSMContext):
 
         # ✅ Сохраняем `company_id` в FSMContext (его не было!)
         await state.update_data(
-            company_id=company.company_id,  # Добавлено
+            company_id=company.company_id,
             company_name=company.name,
             campaign_id=campaign.campaign_id,
             industry=industry
         )
 
-        logger.debug(f"✅ company_id сохранен в FSMContext: {company.company_id}")
+        logger.info(f"✅ Данные сохранены в FSMContext: company_id={company.company_id}, industry={industry}")
 
     except Exception as e:
-        logger.error(f"Ошибка при инициализации шаблона: {e}", exc_info=True)
+        logger.error(f"❌ Ошибка при инициализации шаблона: {e}", exc_info=True)
         await message.reply("Произошла ошибка при инициализации. Попробуйте позже.")
     finally:
         db.close()

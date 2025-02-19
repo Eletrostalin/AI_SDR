@@ -40,7 +40,6 @@ def process_table_operations(df: pd.DataFrame, segment_table_name: str, chat_id:
         # Сохранение данных в БД
         if save_data_to_db(df.to_dict(orient="records"), segment_table_name, db):
             message.reply("Данные из таблицы успешно обработаны и сохранены.")
-            logger.info(f"Данные успешно сохранены в таблицу: {segment_table_name}")
             return True
         else:
             message.reply("Ошибка при сохранении данных в базу.")

@@ -57,25 +57,24 @@ async def handle_file_upload(message: Message, state: FSMContext):
     logger.debug(f"Получено сообщение: {message.text}. Текущее состояние: {await state.get_state()}")
 
     if not message.document:
-        await message.reply("Пожалуйста, отправьте файл в формате CSV или Excel.")
+        await message.reply("Пожалуйста, отправьте файл в формате Excel (.xlsx, .xls).")
         return
 
     document = message.document
     file_path = os.path.join("uploads", document.file_name)
 
     try:
-        # Проверяем формат файла
-        allowed_extensions = (".csv", ".xlsx", ".xls")
+        # Проверяем формат файла (только Excel)
+        allowed_extensions = (".xlsx", ".xls")
         if not document.file_name.lower().endswith(allowed_extensions):
-            await message.reply("Неподдерживаемый формат файла. Пожалуйста, загрузите CSV или Excel.")
+            await message.reply("Неподдерживаемый формат файла. Пожалуйста, загрузите файл в формате Excel (.xlsx, .xls).")
             return  # Завершаем выполнение, если формат неподходящий
 
         bot = message.bot
 
-        # Убедитесь, что директория существует
-        if not os.path.exists("uploads"):
-            os.makedirs("uploads", exist_ok=True)
-            logger.info("Директория 'uploads' создана.")
+        # Создаем директорию для загрузок, если её нет
+        os.makedirs("uploads", exist_ok=True)
+        logger.info("Директория 'uploads' проверена/создана.")
 
         # Загрузка файла
         await bot.download(document.file_id, destination=file_path)
@@ -93,35 +92,33 @@ async def handle_file_upload(message: Message, state: FSMContext):
         is_processed = await process_email_table(file_path, segment_table_name, bot, message)
 
         if is_processed:
-            # Сообщение об успешной обработке только если процесс завершён успешно
             await message.reply(f"Файл обработан успешно и сохранён в таблицу: `{segment_table_name}`.")
         else:
-            # Если обработка не удалась, выводим соответствующее сообщение
             logger.info(f"Файл {file_path} обработан с ошибками. Сообщение об успешной обработке не отправлено.")
 
-        # Очищаем состояние только при завершении обработки
+        # Очищаем состояние
         await state.clear()
 
     except Exception as e:
         logger.error(f"Ошибка при обработке файла {document.file_name}: {e}")
         await message.reply(f"Ошибка при обработке файла: {str(e)}")
     finally:
-        # Удаляем файл, если он существует
+        # Удаление загруженного файла после обработки
         if os.path.exists(file_path):
             os.remove(file_path)
             logger.info(f"Файл {file_path} успешно удалён.")
         else:
             logger.warning(f"Файл {file_path} не найден, удаление пропущено.")
 
+
 def generate_segment_table_name(company_id: int) -> str:
     """
-    Генерирует имя таблицы на основе текущей даты и ID компании.
+    Генерирует имя таблицы на основе ID компании.
 
     :param company_id: ID компании.
     :return: Сформированное имя таблицы.
     """
-    current_date = datetime.now().strftime("%Y%m%d")  # Форматируем текущую дату
-    return f"{current_date}_{company_id}"
+    return f"table_{company_id}"
 
 
 async def handle_view_email_table(message: Message, state):

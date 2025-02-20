@@ -52,17 +52,26 @@ class Company(Base):
 class CompanyInfo(Base):
     __tablename__ = "company_info"
 
-    company_info_id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
-    company_name = Column(String(255), nullable=False)  # Название компании
-    industry = Column(String(255), nullable=False)  # Отрасль/сфера деятельности
-    region = Column(String(255), nullable=True)  # Регион/география работы
-    contact_email = Column(String(255), nullable=False)  # Основной email
-    contact_phone = Column(String(20), nullable=True)  # Телефон (опционально)
-    additional_info = Column(Text, nullable=True)  # Дополнительная информация
+    company_name = Column(String, nullable=False)
 
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, onupdate=func.now())
+    company_mission = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    company_values = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    business_sector = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    office_addresses_and_hours = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    resource_links = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    target_audience_b2b_b2c_niche_geography = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    unique_selling_proposition = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    customer_pain_points = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    competitor_differences = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    promoted_products_and_services = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    delivery_availability_geographical_coverage = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    frequently_asked_questions_with_answers = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    common_customer_objections_and_responses = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    successful_case_studies = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    additional_information = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
+    missing_field_feedback = Column(Text().with_variant(Text(length=2000), "postgresql"), nullable=True)
 
     # Связь с Company
     company = relationship("Company", back_populates="info")

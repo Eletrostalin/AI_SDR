@@ -101,6 +101,9 @@ class CompanyInfo(Base):
         Column("missing_field_feedback", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
     ]
 
+    # Связь с Company
+    company = relationship("Company", back_populates="info")
+
 
 class Campaigns(Base):
     __tablename__ = "campaigns"

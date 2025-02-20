@@ -52,20 +52,54 @@ class Company(Base):
 class CompanyInfo(Base):
     __tablename__ = "company_info"
 
-    company_info_id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)
-    company_name = Column(String(255), nullable=False)  # Название компании
-    industry = Column(String(255), nullable=False)  # Отрасль/сфера деятельности
-    region = Column(String(255), nullable=True)  # Регион/география работы
-    contact_email = Column(String(255), nullable=False)  # Основной email
-    contact_phone = Column(String(20), nullable=True)  # Телефон (опционально)
-    additional_info = Column(Text, nullable=True)  # Дополнительная информация
+    company_name = Column(String, nullable=False)
 
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, onupdate=func.now())
+    # New fields from the questionnaire
+    company_mission = Column(Text, nullable=True)
+    company_values = Column(Text, nullable=True)
+    business_sector = Column(Text, nullable=True)
+    office_addresses_and_hours = Column(Text, nullable=True)
+    resource_links = Column(Text, nullable=True)
+    target_audience_b2b_b2c_niche_geography = Column(Text, nullable=True)
+    unique_selling_proposition = Column(Text, nullable=True)
+    customer_pain_points = Column(Text, nullable=True)
+    competitor_differences = Column(Text, nullable=True)
+    promoted_products_and_services = Column(Text, nullable=True)
+    delivery_availability_geographical_coverage = Column(Text, nullable=True)
+    frequently_asked_questions_with_answers = Column(Text, nullable=True)
+    common_customer_objections_and_responses = Column(Text, nullable=True)
+    successful_case_studies = Column(Text, nullable=True)
+    additional_information = Column(Text, nullable=True)
+    missing_field_feedback = Column(Text, nullable=True)
 
-    # Связь с Company
-    company = relationship("Company", back_populates="info")
+    __table_args__ = (
+        {"sqlite_autoincrement": True},
+    )
+
+    __constraints__ = [
+        Column("company_mission", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+        Column("company_values", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+        Column("business_sector", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+        Column("office_addresses_and_hours", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+        Column("resource_links", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+        Column("target_audience_b2b_b2c_niche_geography", Text, nullable=True).with_variant(Text(length=2000),
+                                                                                            "postgresql"),
+        Column("unique_selling_proposition", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+        Column("customer_pain_points", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+        Column("competitor_differences", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+        Column("promoted_products_and_services", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+        Column("delivery_availability_geographical_coverage", Text, nullable=True).with_variant(Text(length=2000),
+                                                                                                "postgresql"),
+        Column("frequently_asked_questions_with_answers", Text, nullable=True).with_variant(Text(length=2000),
+                                                                                            "postgresql"),
+        Column("common_customer_objections_and_responses", Text, nullable=True).with_variant(Text(length=2000),
+                                                                                             "postgresql"),
+        Column("successful_case_studies", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+        Column("additional_information", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+        Column("missing_field_feedback", Text, nullable=True).with_variant(Text(length=2000), "postgresql"),
+    ]
 
 
 class Campaigns(Base):

@@ -121,23 +121,21 @@ async def greet_new_user(event: ChatMemberUpdated | dict, state: FSMContext):
                             "чтобы я мог лучше понять Ваш бизнес и качественно персонализировать рассылки."
                         )
                     )
+                    # **Сохраняем company_id в состояние FSM**
+                    logger.debug(f"Сохраняем company_id в FSM: {user.company_id}")
+                    await state.update_data(company_id=user.company_id)
 
-                    await state.storage.set_state(
-                        key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
-                        state=OnboardingState.waiting_for_brief
-                    )
-                    await state.storage.set_data(
-                        key=StorageKey(bot_id=bot_id, user_id=telegram_user.id, chat_id=chat_id),
-                        data={"company_id": user.company_id}
-                    )
+
+                    # Устанавливаем состояние без использования StorageKey
+                    await state.set_state(OnboardingState.waiting_for_brief)
+                    current_state = await state.get_state()
+                    logger.debug(f"Состояние установлено: {current_state}")
+
                 else:
                     logger.debug("Приветствие для существующей компании.")
                     await bot.send_message(
                         chat_id=chat_id,
-                        text=(
-                            f"👋 Добро пожаловать, {telegram_user.full_name}!\n"
-                            "Вы добавлены к текущей компании."
-                        )
+                        text=f"👋 Добро пожаловать, {telegram_user.full_name}!\nВы добавлены к текущей компании."
                     )
             except Exception as e:
                 logger.error(f"Ошибка обработки нового пользователя: {e}", exc_info=True)

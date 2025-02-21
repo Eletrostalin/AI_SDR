@@ -25,11 +25,7 @@ from handlers.campaign_handlers.campaign_handlers import (
 )
 from handlers.email_table_handler import handle_file_upload
 from handlers.onboarding_handler import (
-    handle_company_name,
-    handle_confirmation,
-    handle_missing_data,
-    show_collected_data
-)
+    handle_brief_upload, process_brief, confirm_brief)
 from handlers.template_handlers.template_handler import handle_user_input, confirm_template
 from states.states import (
     OnboardingState,
@@ -47,14 +43,12 @@ async def handle_onboarding_states(message: Message, state: FSMContext, current_
     """
     Обрабатывает состояния онбординга.
     """
-    if current_state == OnboardingState.waiting_for_company_name.state:
-        await handle_company_name(message, state)
-    elif current_state == OnboardingState.waiting_for_missing_data.state:
-        await handle_missing_data(message, state)
-    elif current_state == OnboardingState.showing_collected_data.state:
-        await show_collected_data(message, state)
+    if current_state == OnboardingState.waiting_for_brief.state:
+        await handle_brief_upload(message, state)
+    elif current_state == OnboardingState.processing_brief.state:
+        await process_brief(message, state)
     elif current_state == OnboardingState.confirmation.state:
-        await handle_confirmation(message, state)
+        await confirm_brief(message, state)
     else:
         # Если состояние не распознано
         await message.answer("Неизвестное состояние. Пожалуйста, начните заново.")

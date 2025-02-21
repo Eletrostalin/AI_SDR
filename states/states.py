@@ -5,13 +5,9 @@ class BaseState(StatesGroup):
 
 
 class OnboardingState(StatesGroup):
-    """
-    Состояния для процесса онбординга.
-    """
-    waiting_for_info = State()
-    showing_collected_data = State()
-    waiting_for_missing_data = State()
-    confirmation = State()
+    waiting_for_brief = State()  # Ожидание загрузки брифа
+    processing_brief = State()  # Обработка загруженного брифа
+    confirmation = State()  # Подтверждение успешной загрузки
 
 
 class AddCompanyState(StatesGroup):

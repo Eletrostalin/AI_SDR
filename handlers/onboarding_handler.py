@@ -28,12 +28,12 @@ COLUMN_MAPPING = {
     "Болевые точки клиентов": "customer_pain_points",
     "Отличие от конкурентов": "competitor_differences",
     "Какие продукты и услуги продвигать": "promoted_products_and_services",
-    "Наличие доставки / Географический охват": "delivery_availability_geographical_coverage",
+    "Наличие доставки/Географический охват": "delivery_availability_geographical_coverage",
     "Часто задаваемые вопросы (FAQ) с ответами": "frequently_asked_questions_with_answers",
     "Типичные возражения клиентов и ответы на них": "common_customer_objections_and_responses",
     "Примеры успешных кейсов": "successful_case_studies",
     "Прочее": "additional_information",
-    "Нет нужного поля? Напишите ниже, нам важно ваше мнение": "missing_field_feedback",
+    "Нет нужного поля?! Напишите ниже, нам важно ваше мнение": "missing_field_feedback",
 }
 
 
@@ -86,6 +86,8 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
             if key and value:  # Пропускаем пустые строки
                 brief_data[key] = value
 
+        logger.debug(f"Исходные данные перед маппингом: {brief_data}")
+
         # **Шаг 3**: Переименовываем ключи (из "Вопросов" в нужные поля БД)
         renamed_data = {COLUMN_MAPPING.get(k, k): v for k, v in brief_data.items()}
 
@@ -95,6 +97,7 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
         # **Шаг 4**: Сохраняем в FSMContext
         await state.update_data(brief_data=renamed_data)
         await state.set_state(OnboardingState.processing_brief)
+        logger.debug(f"Данные сохранены в FSM перед `process_brief`: {await state.get_data()}")
         await message.answer("✅ Файл загружен! Обрабатываю данные...")
 
         # Передаём в обработчик БД
@@ -127,6 +130,9 @@ async def process_brief(message: types.Message, state: FSMContext):
             await state.set_state(OnboardingState.waiting_for_brief)
             return
 
+        # Логируем полный словарь после маппинга
+        logger.debug(f"Полный словарь после маппинга: {brief_data}")
+
         # Приводим все ключи к строкам (на случай, если что-то сломалось)
         brief_data = {str(k): v for k, v in brief_data.items()}
 
@@ -143,6 +149,10 @@ async def process_brief(message: types.Message, state: FSMContext):
         # Оставляем только ключи, которые есть в модели `CompanyInfo`
         allowed_keys = set(COLUMN_MAPPING.values())
         filtered_data = {k: v for k, v in brief_data.items() if k in allowed_keys}
+
+        # Логируем какие ключи были удалены
+        removed_keys = set(brief_data.keys()) - set(filtered_data.keys())
+        logger.debug(f"Удалены неиспользуемые ключи: {removed_keys}")
 
         db: Session = SessionLocal()
 

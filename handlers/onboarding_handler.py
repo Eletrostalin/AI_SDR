@@ -58,31 +58,31 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
     file_stream = await message.bot.download_file(file.file_path)
 
     try:
-        # Читаем Excel без заголовков (чтобы учесть объединение ячеек)
+        # Читаем Excel без заголовков
         df = pd.read_excel(io.BytesIO(file_stream.read()), header=None)
 
-        # Логируем заголовки и первую строки
-        logger.debug(f"Первая строка (заголовки): {df.iloc[0].tolist()}")
-        logger.debug(f"Вторая строка (название компании): {df.iloc[1].tolist()}")
-
-        # Заполняем объединённые ячейки (переносим значения вправо)
-        df = df.ffill(axis=1)
+        # Заполняем только заголовки (первые две строки), а не данные
+        df.iloc[:2] = df.iloc[:2].ffill(axis=1)
 
         # **Шаг 1**: Берём название компании **из B2 (df.iloc[1,1])**
         company_name = str(df.iloc[1, 1]).strip()
 
         if not company_name:
-            await message.answer(
-                "❌ Ошибка! В файле отсутствует название компании. Проверьте и загрузите заново."
-            )
+            await message.answer("❌ Ошибка! В файле отсутствует название компании. Проверьте и загрузите заново.")
             return
 
         # **Шаг 2**: Формируем словарь с ответами из колонок A и C
         brief_data = {"company_name": company_name}  # Название компании отдельно
 
+        # Получаем все заголовки вопросов из колонки A (до маппинга), фильтруем `nan`
+        original_headers = [
+            str(df.iloc[i, 0]).strip() for i in range(2, len(df)) if pd.notna(df.iloc[i, 0])
+        ]
+
         for i in range(2, len(df)):  # Со строки 3 (индекс 2)
             key = str(df.iloc[i, 0]).strip()  # Вопрос из колонки A
-            value = str(df.iloc[i, 2]).strip()  # Ответ из колонки C
+            value = str(df.iloc[i, 2]).strip() if pd.notna(df.iloc[i, 2]) else None  # Колонка C
+
             if key and value:  # Пропускаем пустые строки
                 brief_data[key] = value
 
@@ -91,16 +91,38 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
         # **Шаг 3**: Переименовываем ключи (из "Вопросов" в нужные поля БД)
         renamed_data = {COLUMN_MAPPING.get(k, k): v for k, v in brief_data.items()}
 
-        # Логируем обработанные данные
-        logger.debug(f"Обработанные данные: {renamed_data}")
+        # **Шаг 4**: Загружаем недостающие поля из FSM**
+        data = await state.get_data()
+        old_missing_fields = set(data.get("missing_fields", []))
 
-        # **Шаг 4**: Сохраняем в FSMContext
-        await state.update_data(brief_data=renamed_data)
+        # **Шаг 5**: Определяем недостающие ключи, исключая `nan`
+        new_missing_fields = {k for k in original_headers if k not in brief_data and k.lower() != "nan"}
+
+        if new_missing_fields:
+            logger.warning(f"❌ В файле всё ещё не хватает данных: {new_missing_fields}")
+
+            await state.update_data(brief_data=renamed_data, missing_fields=list(new_missing_fields))
+            await state.set_state(OnboardingState.missing_fields)
+
+            keyboard = types.ReplyKeyboardMarkup(
+                keyboard=[[types.KeyboardButton(text="Пропустить")], [types.KeyboardButton(text="Заполнить")]],
+                resize_keyboard=True,
+                one_time_keyboard=True
+            )
+
+            await message.answer(
+                f"⚠️ В файле всё ещё не хватает следующих данных:\n\n{', '.join(new_missing_fields)}\n\n"
+                "Отправьте обновленный файл или нажмите ‘Пропустить’.",
+                reply_markup=keyboard
+            )
+            return
+
+        # **Шаг 6**: Все недостающие данные заполнены → очищаем `missing_fields`**
+        await state.update_data(brief_data=renamed_data, missing_fields=[])
+
+        # Если все поля заполнены, продолжаем обработку
         await state.set_state(OnboardingState.processing_brief)
-        logger.debug(f"Данные сохранены в FSM перед `process_brief`: {await state.get_data()}")
         await message.answer("✅ Файл загружен! Обрабатываю данные...")
-
-        # Передаём в обработчик БД
         await process_brief(message, state)
 
     except Exception as e:
@@ -117,7 +139,7 @@ async def process_brief(message: types.Message, state: FSMContext):
         data = await state.get_data()
         logger.debug(f"Полученные данные из FSM перед обработкой: {data}")
 
-        company_id = data.get("company_id")  # Достаём company_id
+        company_id = data.get("company_id")
         brief_data = data.get("brief_data", {})
 
         if not company_id:
@@ -129,6 +151,18 @@ async def process_brief(message: types.Message, state: FSMContext):
             await message.answer("❌ Ошибка! Данные брифа не найдены. Попробуйте загрузить файл заново.")
             await state.set_state(OnboardingState.waiting_for_brief)
             return
+
+        # **Проверяем, остались ли недостающие поля**
+        missing_fields = data.get("missing_fields", [])
+
+        if missing_fields:
+            logger.warning(f"❌ В файле всё ещё не хватает данных: {missing_fields}")
+            await message.answer(
+                f"⚠️ Всё ещё не хватает следующих данных: {', '.join(missing_fields)}\n\n"
+                "Загрузите новый файл или напишите ‘Пропустить’, если хотите продолжить без них."
+            )
+            await state.set_state(OnboardingState.missing_fields)
+            return  # Ждём новый файл
 
         # Логируем полный словарь после маппинга
         logger.debug(f"Полный словарь после маппинга: {brief_data}")
@@ -166,7 +200,7 @@ async def process_brief(message: types.Message, state: FSMContext):
             existing_info.updated_at = datetime.utcnow()
         else:
             logger.info(f"Создаём новую запись для компании ID: {company_id}")
-            filtered_data["company_id"] = company_id  # **Добавляем company_id**
+            filtered_data["company_id"] = company_id
             filtered_data["created_at"] = datetime.utcnow()
             filtered_data["updated_at"] = datetime.utcnow()
 
@@ -192,3 +226,31 @@ async def confirm_brief(message: types.Message, state: FSMContext):
     """
     await message.answer("✅ Данные загружены! Теперь вы можете работать с ботом.")
     await state.clear()
+
+
+@router.message(OnboardingState.missing_fields)
+async def handle_missing_fields_response(message: types.Message, state: FSMContext):
+    """
+    Обрабатывает ответ пользователя на запрос о недостающих полях.
+    """
+    response = message.text.strip().lower()
+
+    if response == "пропустить":
+        logger.info("Пользователь решил пропустить недостающие поля. Завершаем онбординг.")
+
+        # Убираем недостающие поля из FSMContext
+        await state.update_data(missing_fields=[])
+
+        # Переход к следующему шагу
+        await state.set_state(OnboardingState.processing_brief)
+        await message.answer("✅ Продолжаем без недостающих данных. Обрабатываю бриф...")
+        await process_brief(message, state)
+
+    elif response == "заполнить":
+        logger.info("Пользователь хочет исправить недостающие поля. Ждём новый файл.")
+
+        await state.set_state(OnboardingState.waiting_for_brief)
+        await message.answer("🔄 Пожалуйста, загрузите исправленный файл с недостающими данными.")
+
+    else:
+        await message.answer("❌ Неправильный ответ. Напишите **'Пропустить'** или **'Заполнить'**.")

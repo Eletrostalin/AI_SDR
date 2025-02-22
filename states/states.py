@@ -8,6 +8,7 @@ class OnboardingState(StatesGroup):
     waiting_for_brief = State()  # Ожидание загрузки брифа
     processing_brief = State()  # Обработка загруженного брифа
     confirmation = State()  # Подтверждение успешной загрузки
+    missing_fields = State()
 
 
 class AddCompanyState(StatesGroup):

@@ -25,7 +25,7 @@ from handlers.campaign_handlers.campaign_handlers import (
 )
 from handlers.email_table_handler import handle_file_upload
 from handlers.onboarding_handler import (
-    handle_brief_upload, process_brief, confirm_brief)
+    handle_brief_upload, process_brief, confirm_brief, handle_missing_fields_response)
 from handlers.template_handlers.template_handler import handle_user_input, confirm_template
 from states.states import (
     OnboardingState,
@@ -45,10 +45,16 @@ async def handle_onboarding_states(message: Message, state: FSMContext, current_
     """
     if current_state == OnboardingState.waiting_for_brief.state:
         await handle_brief_upload(message, state)
+
     elif current_state == OnboardingState.processing_brief.state:
         await process_brief(message, state)
+
+    elif current_state == OnboardingState.missing_fields.state:
+        await handle_missing_fields_response(message, state)  # Добавили обработчик пропущенных полей
+
     elif current_state == OnboardingState.confirmation.state:
         await confirm_brief(message, state)
+
     else:
         # Если состояние не распознано
         await message.answer("Неизвестное состояние. Пожалуйста, начните заново.")

@@ -8,6 +8,7 @@ import io
 
 from db.db import SessionLocal
 from db.models import CompanyInfo
+from handlers.email_table_handler import handle_email_table_request
 from states.states import OnboardingState
 
 import logging
@@ -222,10 +223,17 @@ async def process_brief(message: types.Message, state: FSMContext):
 
 async def confirm_brief(message: types.Message, state: FSMContext):
     """
-    Подтверждает успешную обработку данных.
+    Подтверждает успешную обработку данных и запускает следующий этап.
     """
-    await message.answer("✅ Данные загружены! Теперь вы можете работать с ботом.")
+    await message.answer(
+        "✅ Готово! Данные загружены. Теперь я знаю ключевые моменты о Вашей компании и могу персонализировать рассылки."
+    )
+
+    # Очищаем состояние после онбординга
     await state.clear()
+
+    # Запускаем следующий модуль (загрузка email-таблицы)
+    await handle_email_table_request(message, state)
 
 
 @router.message(OnboardingState.missing_fields)
@@ -238,13 +246,12 @@ async def handle_missing_fields_response(message: types.Message, state: FSMConte
     if response == "пропустить":
         logger.info("Пользователь решил пропустить недостающие поля. Завершаем онбординг.")
 
-        # Убираем недостающие поля из FSMContext
+        # Очищаем недостающие поля и завершаем онбординг
         await state.update_data(missing_fields=[])
+        await state.set_state(OnboardingState.confirmation)
 
         # Переход к следующему шагу
-        await state.set_state(OnboardingState.processing_brief)
-        await message.answer("✅ Продолжаем без недостающих данных. Обрабатываю бриф...")
-        await process_brief(message, state)
+        await confirm_brief(message, state)
 
     elif response == "заполнить":
         logger.info("Пользователь хочет исправить недостающие поля. Ждём новый файл.")

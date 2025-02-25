@@ -7,6 +7,7 @@ from handlers.campaign_handlers.campaign_delete_handler import (
     handle_delete_campaign_request,
     handle_campaign_deletion_callback,  # Обработчик инлайн-кнопок для удаления кампаний
 )
+from handlers.email_table_handler import router as email_router
 from chat_handlers import router as chat_router
 from admin.admin_commands import router as home_router
 from handlers.company_handlers.company_handlers import router as company_router
@@ -50,6 +51,7 @@ def setup_routers(dp: Dispatcher):
     dp.include_router(campaign_router)
     dp.include_router(template_router)
     dp.include_router(draft_router)
+    dp.include_router(email_router)
 
     # Регистрация маршрутизатора для онбординга
 

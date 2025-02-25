@@ -88,3 +88,12 @@ def extract_filters_from_text(user_input: str) -> dict:
     except (json.JSONDecodeError, ValueError) as e:
         logger.error(f"❌ Ошибка обработки JSON: {e}")
         return {}
+
+def generate_segment_table_name(company_id: int) -> str:
+    """
+    Генерирует имя таблицы на основе ID компании.
+
+    :param company_id: ID компании.
+    :return: Сформированное имя таблицы.
+    """
+    return f"table_{company_id}"

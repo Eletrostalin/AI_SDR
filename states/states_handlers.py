@@ -23,7 +23,7 @@ from handlers.campaign_handlers.campaign_handlers import (
     process_campaign_data,
     process_filters
 )
-from handlers.email_table_handler import handle_file_upload
+from handlers.email_table_handler import handle_file_upload, handle_email_choice_callback
 from handlers.onboarding_handler import (
     handle_brief_upload, process_brief, confirm_brief, handle_missing_fields_response)
 from handlers.template_handlers.template_handler import handle_user_input, confirm_template
@@ -60,14 +60,17 @@ async def handle_onboarding_states(message: Message, state: FSMContext, current_
         await message.answer("Неизвестное состояние. Пожалуйста, начните заново.")
         await state.clear()
 
+
 async def handle_add_email_segmentation_states(message: Message, state: FSMContext, current_state: str):
     """
     Обрабатывает состояния добавления email-таблицы.
     """
     if current_state == AddEmailSegmentationState.waiting_for_file_upload.state:
         await handle_file_upload(message, state)
-   # elif current_state == AddEmailSegmentationState.waiting_for_mapping_confirmation.state:
-        # await handle_mapping_confirmation(message, state)
+
+    elif current_state == AddEmailSegmentationState.duplicate_email_check.state:
+        await handle_email_choice_callback(message, state)  # Обрабатываем выбор пользователя по email
+
     else:
         logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
         await message.reply("Произошла ошибка. Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")

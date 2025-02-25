@@ -1,139 +1,98 @@
-import os
 import pandas as pd
+import re
 import json
 import logging
 from classifier import client
-from db.db import engine, SessionLocal
+from db.db import engine
 from db.dynamic_table_manager import create_dynamic_email_table
 from db.email_table_db import process_table_operations
 from db.segmentation import EMAIL_SEGMENT_COLUMNS
+from sqlalchemy import inspect
+
 from promts.email_table_promt import generate_column_mapping_prompt
-from sqlalchemy.orm import Session
-from sqlalchemy import text, inspect
 
 logger = logging.getLogger(__name__)
 
-async def process_email_table(file_path: str, segment_table_name: str, bot, message) -> bool:
-    """
-    Обрабатывает загруженную таблицу Excel, выполняет маппинг колонок, очищает данные и сохраняет их в базу.
-    """
-    try:
-        # Читаем только Excel-файлы
-        df = pd.read_excel(file_path)
 
-        # Проверка на пустую таблицу
-        if df.empty:
-            await message.reply("Файл пуст или не содержит данных.")
-            return False
+def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """ Очищает DataFrame от пустых строк и значений. """
+    df.dropna(how="all", inplace=True)
+    df.fillna("", inplace=True)
+    df = df[~df.apply(lambda row: row.astype(str).str.strip().eq("").all(), axis=1)]
+    df.columns = df.columns.str.strip()
+    return df
 
-        # === Очистка данных ===
-        df.dropna(how="all", inplace=True)  # Удаляем полностью пустые строки
-        df.fillna("", inplace=True)  # Заменяем NaN на пустые строки
-        df = df[~df.apply(lambda row: row.astype(str).str.strip().eq("").all(), axis=1)]  # Удаляем строки, где все колонки пустые
 
-        if df.empty:
-            logger.warning("После очистки не осталось данных для обработки.")
-            await message.reply("Файл не содержит значимых данных после очистки. Проверьте его содержимое.")
-            return False
+async def map_columns(user_columns: list) -> dict:
+    """ Отправляет запрос на маппинг колонок через ИИ. """
+    logger.debug("🔄 Отправка запроса для маппинга колонок...")
+    prompt = generate_column_mapping_prompt(user_columns)
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    mapping = json.loads(response.choices[0].message.content.strip())
+    logger.debug(f"🔄 Полученный маппинг: {mapping}")
+    return mapping if mapping and any(mapping.values()) else None
 
-        # Очищаем заголовки от пробелов и случайных символов
-        df.columns = df.columns.str.strip()
 
-        # Проверка количества колонок
-        user_columns = df.columns.tolist()
-        logger.debug(f"Колонки пользователя: {user_columns}")
+def count_emails_in_cell(cell):
+    """ Подсчет количества email в ячейке, используя '@' и разделение по пробелам, запятым и точкам с запятой. """
+    if pd.isna(cell) or not isinstance(cell, str):
+        return 0, []  # Если пусто или не строка
 
-        # === Генерация промпта и маппинг колонок ===
-        logger.debug("Отправка запроса для маппинга колонок...")
-        prompt = generate_column_mapping_prompt(user_columns)
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        mapping = json.loads(response.choices[0].message.content.strip())
-        logger.debug(f"Полученный маппинг: {mapping}")
+    # Очищаем от лишних пробелов, переносов строк
+    cell = re.sub(r"\s+", " ", cell.strip())
 
-        # Проверка наличия маппинга
-        if not mapping or not any(mapping.values()):
-            await message.reply("Не удалось сопоставить загруженные данные с фиксированными колонками.")
-            logger.warning("Маппинг колонок отсутствует или пуст.")
-            return False
+    # Разделяем строку по пробелам, запятым и точкам с запятой
+    parts = re.split(r"[ ,;]", cell)
 
-        # Переименование колонок в DataFrame
-        df.rename(columns=mapping, inplace=True)
-        logger.info(f"Переименованные колонки: {df.columns.tolist()}")
-        logger.debug(f"Ожидаемые колонки: {EMAIL_SEGMENT_COLUMNS}")
+    # Фильтруем: оставляем только email-адреса (должны содержать '@')
+    emails = [part for part in parts if "@" in part]
 
-        # === Проверка e-mail перед записью в базу ===
-        email_column = next((col for col in df.columns if "email" in col.lower()), None)
+    return len(emails), emails
 
-        if email_column:
-            # Фильтруем записи без e-mail
-            total_rows = len(df)
-            df = df[df[email_column].str.strip() != ""]  # Удаляем записи без e-mail
-            removed_rows = total_rows - len(df)  # Считаем, сколько строк убрали
 
-            if removed_rows > 0:
-                await message.reply(
-                    f"В загружаемой таблице {removed_rows} записей **не будут добавлены**, так как e-mail отсутствует.")
+def clean_and_validate_emails(df: pd.DataFrame) -> tuple:
+    """Очищает e-mail колонки, подсчитывает записи с несколькими email и возвращает номера строк и значения."""
 
-            # Оставляем только первый e-mail в ячейке (если их несколько)
-            df[email_column] = df[email_column].str.extract(r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})")
+    email_column = next((col for col in df.columns if "email" in col.lower()), None)
+    if not email_column:
+        return df, None, 0, [], []  # Нет email-колонки
 
-            logger.info("Обработаны e-mail'ы. Оставлены только первые адреса в ячейке.")
-        else:
-            await message.reply(
-                "Ошибка: В загружаемой таблице не найдена колонка e-mail. Проверьте, что e-mail присутствует в файле.")
-            return False
+    df[email_column] = df[email_column].astype(str).str.strip()
 
-        # Проверка на наличие ожидаемых колонок
-        missing_columns = [col for col in EMAIL_SEGMENT_COLUMNS if col not in df.columns]
-        if missing_columns:
-            logger.warning(f"Отсутствующие колонки после маппинга: {missing_columns}")
-            await message.reply("Некоторые обязательные колонки отсутствуют после обработки. Проверьте загруженный файл.")
-            return False
+    multi_email_rows = []
+    problematic_values = []
 
-        # Удаление лишних колонок
-        df = df[[col for col in df.columns if col in EMAIL_SEGMENT_COLUMNS]]
-        logger.info(f"Фильтрованные колонки: {df.columns.tolist()}")
+    for index, value in df[email_column].items():
+        count, emails = count_emails_in_cell(value)
+        if count > 1:
+            multi_email_rows.append(index + 1)  # +1, чтобы соответствовало Excel
+            problematic_values.append(", ".join(emails))
 
-        # Проверка данных после фильтрации
-        if df.empty:
-            logger.warning("Данные отсутствуют после фильтрации колонок.")
-            await message.reply("В обработанном файле отсутствуют данные после фильтрации. Проверьте, что в файле есть данные.")
-            return False
+    return df, email_column, len(multi_email_rows), multi_email_rows, problematic_values
 
-        # === Проверка и создание таблицы ===
-        logger.info(f"🔍 Проверяем наличие таблицы '{segment_table_name}'...")
-        inspector = inspect(engine)
-        if not inspector.has_table(segment_table_name):
-            create_dynamic_email_table(engine, segment_table_name)
-            logger.info(f"✅ Таблица '{segment_table_name}' создана.")
-        else:
-            logger.info(f"✅ Таблица '{segment_table_name}' уже существует.")
 
-        # === Сохранение данных ===
-        chat_id = str(message.chat.id)
-        file_name = os.path.basename(file_path)
-        return process_table_operations(df, segment_table_name, chat_id, message, file_name)
+async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message):
+    """Сохраняет очищенные данные в БД."""
+    missing_columns = [col for col in EMAIL_SEGMENT_COLUMNS if col not in df.columns]
 
-    except Exception as e:
-        logger.error(f"Ошибка при обработке файла {file_path}: {e}", exc_info=True)
-        await message.reply(f"Произошла ошибка при обработке файла: {e}")
+    if missing_columns:
+        await message.reply("⚠️ Некоторые обязательные колонки отсутствуют. Проверьте загруженный файл.")
         return False
 
+    df = df[[col for col in df.columns if col in EMAIL_SEGMENT_COLUMNS]]
+    if df.empty:
+        await message.reply("❌ В обработанном файле отсутствуют данные после фильтрации.")
+        return False
 
-def count_table_rows(table_name: str) -> int:
-    """
-    Подсчитывает количество записей в указанной таблице.
-    """
-    db: Session = SessionLocal()
-    try:
-        query = text(f"SELECT COUNT(*) FROM {table_name}")
-        result = db.execute(query).scalar()
-        return result or 0
-    except Exception as e:
-        print(f"Ошибка при подсчёте строк в таблице {table_name}: {e}")
-        return 0
-    finally:
-        db.close()
+    if not inspect(engine).has_table(segment_table_name):
+        create_dynamic_email_table(engine, segment_table_name)
+        logger.info(f"✅ Таблица '{segment_table_name}' создана.")
+
+    chat_id = str(message.chat.id)
+    file_name = "email_data.xlsx"
+    process_table_operations(df, segment_table_name, chat_id, message, file_name)
+    await message.reply(f"✅ Данные успешно загружены! 📊 Итоговое количество записей: **{len(df)}**.")
+    return True

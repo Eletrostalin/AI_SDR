@@ -67,6 +67,7 @@ def save_company_info(db: Session, company_id: int, details: dict) -> CompanyInf
     db.refresh(company_info)
     return company_info
 
+
 def get_company_info_by_id(company_id: int) -> CompanyInfo | None:
     """Получает информацию о компании по company_id"""
     db = SessionLocal()

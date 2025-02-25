@@ -75,6 +75,7 @@ async def handle_add_email_segmentation_states(message: Message, state: FSMConte
         logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
         await message.reply("Произошла ошибка. Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
 
+
 # Обработка состояний редактирования компании
 async def handle_edit_company_states(message: Message, state: FSMContext, current_state: str):
     """
@@ -94,6 +95,7 @@ async def handle_edit_company_states(message: Message, state: FSMContext, curren
         # Если состояние не распознано
         await message.answer("Неизвестное состояние. Пожалуйста, начните заново.")
         await state.clear()
+
 
 # Обработка состояний добавления кампании
 async def handle_add_campaign_states(message: Message, state: FSMContext, current_state: str):
@@ -117,6 +119,7 @@ async def handle_add_campaign_states(message: Message, state: FSMContext, curren
         await message.reply("Неизвестное состояние. Начните процесс заново.")
         await state.clear()
 
+
 async def handle_add_content_plan_states(message: Message, state: FSMContext, current_state: str):
     """
     Обрабатывает состояния добавления контентного плана.
@@ -133,6 +136,7 @@ async def handle_add_content_plan_states(message: Message, state: FSMContext, cu
     elif current_state == AddContentPlanState.waiting_for_confirmation.state:
         # Обработка подтверждения контентного плана
         await confirm_content_plan(message, state)
+
 
 async def handle_template_states(message: Message, state: FSMContext, current_state: str):
     """

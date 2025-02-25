@@ -29,12 +29,24 @@ async def handle_email_table_request(message: Message, state: FSMContext):
     logger.info("Инициация добавления таблицы email. Установка состояния ожидания файла.")
 
     try:
-        # Генерация имени таблицы
-        user_id = message.from_user.id
-        segment_table_name = generate_segment_table_name(user_id)
+        chat_id = message.chat.id
+
+        # Получаем company_id
+        with SessionLocal() as db:
+            company = get_company_by_chat_id(db, str(chat_id))
+            if not company:
+                logger.error(f"❌ Ошибка: Не найден company_id для chat_id={chat_id}")
+                await message.reply("❌ Ошибка: Не удалось найти компанию, связанный с вашим чатом.")
+                return
+
+            company_id = company.company_id  # company.id должен быть целым числом
+            logger.debug(f"🔹 Найден company_id={company_id} для chat_id={chat_id}")
+
+        segment_table_name = generate_segment_table_name(chat_id)
         if segment_table_name is None:
             logger.error("❌ Ошибка: segment_table_name не был сгенерирован!")
             return
+
         logger.debug(f"📌 Сгенерированное имя таблицы: {segment_table_name}")
 
         # Сохранение состояния и данных
@@ -59,7 +71,7 @@ async def handle_file_upload(message: Message, state: FSMContext):
     """
     Обработчик загрузки таблицы с email-сегментацией.
     """
-    logger.debug(f"📂 Получено сообщение: {message.text}. Текущее состояние: {await state.get_state()}")
+    logger.debug(f"📂 Получено сообщение. Текущее состояние: {await state.get_state()}")
 
     # Если пользователь отправил сообщение без файла
     if not message.document:
@@ -74,7 +86,7 @@ async def handle_file_upload(message: Message, state: FSMContext):
         allowed_extensions = (".xlsx", ".xls")
         if not document.file_name.lower().endswith(allowed_extensions):
             await message.reply("❌ Неподдерживаемый формат файла. Загрузите Excel (.xlsx, .xls).")
-            return  # Завершаем выполнение, если формат неподходящий
+            return
 
         bot = message.bot
 
@@ -84,14 +96,29 @@ async def handle_file_upload(message: Message, state: FSMContext):
         await bot.download(document.file_id, destination=file_path)
         logger.info(f"📂 Файл {document.file_name} успешно сохранён в {file_path}.")
 
-        # Проверяем, ожидался ли новый файл
+        # Получаем данные из state
         state_data = await state.get_data()
-        waiting_for_new_file = state_data.get("waiting_for_new_file", False)
         segment_table_name = state_data.get("segment_table_name")
 
-        if waiting_for_new_file:
-            logger.debug("📂 Пользователь загрузил новый файл. Сбрасываем ожидание.")
-            await state.update_data(waiting_for_new_file=False)  # Сбрасываем флаг
+        # Если segment_table_name отсутствует, генерируем заново
+        if segment_table_name is None:
+            chat_id = message.chat.id
+
+            with SessionLocal() as db:
+                company = get_company_by_chat_id(db, str(chat_id))
+                if not company:
+                    logger.error(f"❌ Ошибка: Не найден company_id для chat_id={chat_id}")
+                    await message.reply("❌ Ошибка: Не удалось найти компанию, связанную с вашим чатом.")
+                    return
+
+                company_id = company.company_id  # Исправлено!
+                segment_table_name = generate_segment_table_name(company_id)
+                logger.debug(f"🔄 Повторное создание имени таблицы: {segment_table_name}")
+
+            # Обновляем state с новым segment_table_name
+            await state.update_data(segment_table_name=segment_table_name)
+
+        logger.debug(f"📌 Используемое имя таблицы: {segment_table_name}")
 
         # Обрабатываем файл
         is_processed = await process_email_table(file_path, segment_table_name, message, state)
@@ -205,7 +232,7 @@ async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     df = data.get("processing_df")
     email_column = data.get("email_column")
-    segment_table_name = data.get("segment_table_name")
+    segment_table_name = data.get("segment_table_name")  # Извлекаем имя таблицы
 
     if choice == "split_emails":
         logger.info("✅ Пользователь выбрал разделение записей с несколькими email.")
@@ -220,6 +247,9 @@ async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
 
     elif choice == "upload_new_file":
         logger.info("🔄 Пользователь решил загрузить новый файл.")
+
+        # Сохраняем имя таблицы перед сменой состояния!
+        await state.update_data(segment_table_name=segment_table_name, waiting_for_new_file=True)
 
         await state.set_state(AddEmailSegmentationState.waiting_for_file_upload)
         await call.message.edit_text("🔄 Пожалуйста, загрузите исправленный файл.")
@@ -240,7 +270,7 @@ async def handle_view_email_table(message: Message, state):
 
     try:
         # Получаем компанию по chat_id
-        company = get_company_by_chat_id(db, chat_id)
+        company = get_company_by_chat_id(db, str(chat_id))
         if not company:
             await message.reply("Компания не найдена. Убедитесь, что вы зарегистрировали свою компанию.")
             return

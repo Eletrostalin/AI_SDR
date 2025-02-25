@@ -4,6 +4,7 @@ import logging
 from db.segmentation import FILTER_TYPES
 from utils.utils import send_to_model, logger  # Функция отправки в модель
 
+
 def extract_filters_from_text(user_input: str) -> dict:
     """
     Отправляет текст пользователя в модель и получает список фильтров в фиксированном формате.
@@ -89,11 +90,13 @@ def extract_filters_from_text(user_input: str) -> dict:
         logger.error(f"❌ Ошибка обработки JSON: {e}")
         return {}
 
+
 def generate_segment_table_name(company_id: int) -> str:
     """
     Генерирует имя таблицы на основе ID компании.
-
-    :param company_id: ID компании.
-    :return: Сформированное имя таблицы.
     """
+    if company_id is None:
+        logger.error("❌ Ошибка: передан company_id=None при генерации имени таблицы.")
+        return None
+
     return f"table_{company_id}"

@@ -123,8 +123,10 @@ async def handle_file_upload(message: Message, state: FSMContext):
         # Обрабатываем файл
         is_processed = await process_email_table(file_path, segment_table_name, message, state)
 
-        if is_processed:
+        if is_processed is True:
             await message.reply(f"✅ Файл обработан успешно и сохранён в таблицу: `{segment_table_name}`.")
+        elif is_processed is None:  # 🔄 Новый кейс
+            logger.info("⚠️ Ожидание выбора пользователя по дубликатам email.")
         else:
             logger.warning(f"⚠️ Ошибки при обработке файла {document.file_name}.")
             await message.reply("⚠️ Ошибка при обработке файла. Проверьте данные и попробуйте ещё раз.")
@@ -179,12 +181,21 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
         df.rename(columns=mapping, inplace=True)
         logger.info(f"✅ Колонки после маппинга: {df.columns.tolist()}")
 
-        df, valid_emails, multi_email_rows, problematic_rows, problematic_values = clean_and_validate_emails(df)
+        df, valid_emails, multi_email_rows, problematic_rows, problematic_values, empty_email_rows = clean_and_validate_emails(df)
 
+        # Если в файле нет колонки с email, прерываем обработку
         if valid_emails is None:
             await message.reply("❌ Ошибка: В загружаемой таблице не найдена колонка e-mail.")
             return False
 
+        # Уведомление о количестве пустых email, но продолжаем обработку
+        if empty_email_rows > 0:
+            await message.reply(
+                f"⚠️ В загруженном файле найдено **{empty_email_rows}** строк без email. "
+                "Они не будут сохранены, но остальная информация будет обработана."
+            )
+
+        # Если есть дубликаты email, ждем ответа пользователя
         if multi_email_rows > 0:
             logger.warning(f"⚠️ Найдено {multi_email_rows} записей с несколькими email. "
                            f"Номера строк: {problematic_rows}. Значения: {problematic_values}")
@@ -211,6 +222,9 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
                 reply_markup=get_email_choice_keyboard()
             )
             return False  # Ждём ответа пользователя
+
+        # Фильтруем строки, удаляя те, где email пустой
+        df = df[df[valid_emails] != ""]
 
         await save_cleaned_data(df, segment_table_name, message)
         return True

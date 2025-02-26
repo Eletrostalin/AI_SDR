@@ -54,24 +54,29 @@ def count_emails_in_cell(cell):
 
 
 def clean_and_validate_emails(df: pd.DataFrame) -> tuple:
-    """Очищает e-mail колонки, подсчитывает записи с несколькими email и возвращает номера строк и значения."""
+    """Очищает e-mail колонки, проверяет дубликаты, пустые значения и возвращает номера строк и значения."""
 
     email_column = next((col for col in df.columns if "email" in col.lower()), None)
     if not email_column:
-        return df, None, 0, [], []  # Нет email-колонки
+        return df, None, 0, [], [], 0  # Нет email-колонки
 
     df[email_column] = df[email_column].astype(str).str.strip()
 
     multi_email_rows = []
     problematic_values = []
+    empty_email_rows = 0
 
     for index, value in df[email_column].items():
+        if not value:  # Если ячейка пустая
+            empty_email_rows += 1
+            continue
+
         count, emails = count_emails_in_cell(value)
         if count > 1:
             multi_email_rows.append(index + 1)  # +1, чтобы соответствовало Excel
             problematic_values.append(", ".join(emails))
 
-    return df, email_column, len(multi_email_rows), multi_email_rows, problematic_values
+    return df, email_column, len(multi_email_rows), multi_email_rows, problematic_values, empty_email_rows
 
 
 async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message):

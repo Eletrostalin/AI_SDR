@@ -10,7 +10,7 @@ from handlers.content_plan_handlers.content_plan_view import handle_view_content
 from handlers.draft_handlers.draft_handler import add_drafts
 from handlers.email_table_handler import handle_email_table_request
 from handlers.template_handlers.template_handler import add_template
-from handlers.view_email.view_email_handler import handle_view_email_table
+from handlers.handle_view_email_table.view_email_handler import handle_view_email_table
 from logger import logger
 
 from sqlalchemy.orm import Session

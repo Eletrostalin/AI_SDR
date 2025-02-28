@@ -18,6 +18,26 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def get_yes_no_keyboard(callback_yes: str, callback_no: str) -> InlineKeyboardMarkup:
+    """Создает инлайн-клавиатуру с кнопками 'Да' и 'Нет'."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да", callback_data=callback_yes)],
+            [InlineKeyboardButton(text="❌ Нет", callback_data=callback_no)]
+        ]
+    )
+
+
+def get_email_choice_keyboard():
+    """Создаёт инлайн-кнопки для выбора способа обработки email."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Оставить (разделить записи)", callback_data="split_emails")],
+            [InlineKeyboardButton(text="❌ Изменить (загрузить новый файл)", callback_data="upload_new_file")]
+        ]
+    )
+
+
 @router.message()
 async def handle_email_table_request(message: Message, state: FSMContext):
     """
@@ -140,16 +160,6 @@ async def handle_file_upload(message: Message, state: FSMContext):
             logger.warning(f"⚠️ Файл {file_path} не найден, удаление пропущено.")
 
 
-def get_email_choice_keyboard():
-    """Создаёт инлайн-кнопки для выбора способа обработки email."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Оставить (разделить записи)", callback_data="split_emails")],
-            [InlineKeyboardButton(text="❌ Изменить (загрузить новый файл)", callback_data="upload_new_file")]
-        ]
-    )
-
-
 async def process_email_table(file_path: str, segment_table_name: str, message: Message, state: FSMContext) -> bool:
     """
     Обрабатывает загруженную таблицу Excel, выполняет маппинг колонок, очищает данные и сохраняет их в базу.
@@ -221,7 +231,7 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
 @router.callback_query()
 async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
     """
-    Обрабатывает выбор пользователя: разделить email-адреса или запросить новый файл (инлайн-кнопки).
+    Обрабатывает выбор пользователя: разделить email-адреса или запросить новый файл.
     """
     current_state = await state.get_state()
     logger.debug(f"📌 Текущее состояние перед обработкой колбэка: {current_state}")
@@ -231,7 +241,7 @@ async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     df = data.get("processing_df")
     email_column = data.get("email_column")
-    segment_table_name = data.get("segment_table_name")  # Извлекаем имя таблицы
+    segment_table_name = data.get("segment_table_name")
 
     if choice == "split_emails":
         logger.info("✅ Пользователь выбрал разделение записей с несколькими email.")
@@ -242,19 +252,33 @@ async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text("✅ Записи разделены! Теперь каждая строка содержит только **один** email.")
 
         await save_cleaned_data(df, segment_table_name, call.message)
-        await state.clear()
+
+        # 🔥 Добавляем вызов вопроса о новых файлах после разделения email!
+        await ask_about_more_files(call.message, state)
 
     elif choice == "upload_new_file":
         logger.info("🔄 Пользователь решил загрузить новый файл.")
 
-        # Сохраняем имя таблицы перед сменой состояния!
         await state.update_data(segment_table_name=segment_table_name, waiting_for_new_file=True)
-
         await state.set_state(AddEmailSegmentationState.waiting_for_file_upload)
         await call.message.edit_text("🔄 Пожалуйста, загрузите исправленный файл.")
 
+        # 🔥 Добавляем вызов вопроса после загрузки нового файла!
+        await ask_about_more_files(call.message, state)
+
     else:
         await call.answer("❌ Неверный выбор.", show_alert=True)
+
+
+async def ask_about_more_files(message: Message, state: FSMContext):
+    """
+    Спрашивает пользователя, хочет ли он загрузить еще один файл или перейти к кампании.
+    """
+    await state.set_state(AddEmailSegmentationState.waiting_for_more_files_decision)
+    await message.reply(
+        "Вы хотите загрузить еще один файл с базой email?",
+        reply_markup=get_yes_no_keyboard("load_more_files", "proceed_to_campaign")
+    )
 
         
 @router.callback_query(F.data.in_(["load_more_files", "proceed_to_campaign"]), StateFilter(AddEmailSegmentationState.waiting_for_more_files_decision))

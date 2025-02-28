@@ -67,23 +67,25 @@ async def handle_add_email_segmentation_states(event: Message | CallbackQuery, s
     Обрабатывает состояния добавления email-таблицы.
     Поддерживает как обычные сообщения (`Message`), так и callback-запросы (`CallbackQuery`).
     """
+    logger.debug(f"🔄 Обрабатываем состояние: {current_state} | Тип события: {type(event)}")
+
     if isinstance(event, Message):  # Если это обычное сообщение
-        if current_state == AddEmailSegmentationState.waiting_for_file_upload.state:
+        if current_state == AddEmailSegmentationState.waiting_for_file_upload:
             await handle_file_upload(event, state)
 
-        elif current_state == AddEmailSegmentationState.duplicate_email_check.state:
+        elif current_state == AddEmailSegmentationState.duplicate_email_check:
             await handle_email_choice_callback(event, state)  # Обрабатываем выбор пользователя по email
 
         else:
-            logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
+            logger.warning(f"⚠️ Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
             await event.reply("Произошла ошибка. Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
 
     elif isinstance(event, CallbackQuery):  # Если это callback-запрос
-        if current_state == AddEmailSegmentationState.waiting_for_more_files_decision.state:
-            await handle_more_files_decision(event, state)  # Добавляем поддержку выбора загрузки файлов
+        if current_state == AddEmailSegmentationState.waiting_for_more_files_decision:
+            await handle_more_files_decision(event, state)  # Обрабатываем выбор загрузки файлов
 
         else:
-            logger.warning(f"Неизвестное состояние для callback: {current_state}.")
+            logger.warning(f"⚠️ Неизвестное состояние для callback: {current_state}.")
             await event.answer("Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
 
 

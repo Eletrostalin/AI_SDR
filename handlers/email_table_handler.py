@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-def get_yes_no_keyboard(callback_yes: str, callback_no: str) -> InlineKeyboardMarkup:
+def get_yes_no_keyboard() -> InlineKeyboardMarkup:
     """Создает инлайн-клавиатуру с кнопками 'Да' и 'Нет'."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Да", callback_data=callback_yes)],
-            [InlineKeyboardButton(text="❌ Нет", callback_data=callback_no)]
+            [InlineKeyboardButton(text="✅ Да", callback_data="load_more_files")],
+            [InlineKeyboardButton(text="❌ Нет", callback_data="proceed_to_campaign")]
         ]
     )
 
@@ -142,11 +142,14 @@ async def handle_file_upload(message: Message, state: FSMContext):
 
         if is_processed:
             await message.reply(f"✅ Файл обработан успешно и сохранён в таблицу: `{segment_table_name}`.")
+
+            # 🔥 Добавляем вызов вопроса о новых файлах после успешной обработки!
+            await ask_about_more_files(message, state)
         else:
             logger.warning(f"⚠️ Ошибки при обработке файла {document.file_name}.")
             await message.reply("⚠️ Ошибка при обработке файла. Проверьте данные и попробуйте ещё раз.")
 
-        await state.clear()
+        #await state.clear()
 
     except Exception as e:
         logger.error(f"❌ Ошибка при обработке файла {document.file_name}: {e}", exc_info=True)
@@ -274,10 +277,19 @@ async def ask_about_more_files(message: Message, state: FSMContext):
     """
     Спрашивает пользователя, хочет ли он загрузить еще один файл или перейти к кампании.
     """
+    logger.debug(f"🔄 Устанавливаем состояние: {AddEmailSegmentationState.waiting_for_more_files_decision}")
     await state.set_state(AddEmailSegmentationState.waiting_for_more_files_decision)
+
+    # 🔥 Даем немного времени FSM для записи состояния
+    import asyncio
+    await asyncio.sleep(0.1)
+
+    current_state = await state.get_state()
+    logger.debug(f"✅ После паузы состояние: {current_state}")
+
     await message.reply(
         "Вы хотите загрузить еще один файл с базой email?",
-        reply_markup=get_yes_no_keyboard("load_more_files", "proceed_to_campaign")
+        reply_markup=get_yes_no_keyboard()
     )
 
         

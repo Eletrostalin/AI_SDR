@@ -11,10 +11,9 @@ from db.models import Company
 from dispatcher import dispatch_classification
 from states.states import OnboardingState
 from logger import logger
-from states.states_handlers import handle_onboarding_states, handle_edit_company_states, \
-    handle_add_email_segmentation_states, handle_add_content_plan_states, handle_add_campaign_states, \
-    handle_template_states
-
+from states.states_handlers import handle_onboarding_states, handle_edit_company_states, handle_add_content_plan_states, \
+    handle_add_campaign_states, \
+    handle_template_states, handle_email_upload_states, handle_email_processing_decisions
 
 router = Router()
 
@@ -158,11 +157,11 @@ async def handle_message(message: Message, state: FSMContext):
         return  # Игнорируем сообщения от бота
 
     current_state = await state.get_state()
-    logger.debug(f"Получено сообщение: {message.text}. Текущее состояние: {current_state}")
+    logger.debug(f"📩 Получено сообщение: {message.text}. Текущее состояние: {current_state}")
 
-    # Обработка системных сообщений
+    # Обработка системных сообщений (например, добавление или выход из чата)
     if message.content_type in {ContentType.NEW_CHAT_MEMBERS, ContentType.LEFT_CHAT_MEMBER}:
-        logger.debug("Обрабатываем системное сообщение (новые участники или выход).")
+        logger.debug("📌 Обрабатываем системное сообщение (новые участники или выход).")
         if message.content_type == ContentType.NEW_CHAT_MEMBERS:
             for new_member in message.new_chat_members:
                 event_data = {
@@ -176,39 +175,42 @@ async def handle_message(message: Message, state: FSMContext):
                     "old_status": "left",  # Предположительно, пользователь был вне чата
                     "bot_id": message.bot.id,
                 }
-                logger.debug(f"Обрабатываем добавление нового пользователя: {new_member.full_name}")
+                logger.debug(f"👤 Обрабатываем добавление нового пользователя: {new_member.full_name}")
                 await greet_new_user(event_data, state)
         elif message.content_type == ContentType.LEFT_CHAT_MEMBER:
-            logger.debug(f"Пользователь покинул чат: {message.left_chat_member.full_name}")
-        logger.debug("Системное сообщение обработано. Пропускаем обработку.")
+            logger.debug(f"👤 Пользователь покинул чат: {message.left_chat_member.full_name}")
+        logger.debug("✅ Системное сообщение обработано. Пропускаем дальнейшую обработку.")
         return
 
     # Если состояние не установлено, классифицируем сообщение и устанавливаем базовое состояние
     if current_state is None:
-        logger.debug("Состояние отсутствует. Устанавливаем базовое состояние и классифицируем сообщение.")
+        logger.debug("⚠️ Состояние отсутствует. Запускаем AI-классификацию сообщения.")
         try:
-            classification = classify_message(message.text)  # Классификация сообщения
-            logger.debug(f"Результат классификации: {classification}")
-            await dispatch_classification(classification, message, state)  # Передача в диспетчер
+            classification = classify_message(message.text)  # AI-классификация
+            logger.debug(f"🎯 Результат классификации: {classification}")
+            await dispatch_classification(classification, message, state)  # Передаём в диспетчер
         except Exception as e:
-            logger.error(f"Ошибка в процессе классификации: {e}", exc_info=True)
+            logger.error(f"❌ Ошибка при классификации сообщения: {e}", exc_info=True)
             await message.reply("Произошла ошибка при обработке вашего сообщения. Попробуйте снова.")
         return
 
-    # Маршрутизация по состояниям
-    if current_state.startswith("OnboardingState:"):
-        await handle_onboarding_states(message, state, current_state)
-    elif current_state.startswith("EditCompanyState:"):
-        await handle_edit_company_states(message, state, current_state)
-    elif current_state.startswith("AddCampaignState:"):
-        await handle_add_campaign_states(message, state, current_state)
-    elif current_state.startswith("AddContentPlanState:"):  # Добавлена новая ветка
-        await handle_add_content_plan_states(message, state, current_state)
-    elif current_state.startswith("AddEmailSegmentationState:"):
-        await handle_add_email_segmentation_states(message, state, current_state)
-    elif current_state.startswith("TemplateStates:"):  # <=== Добавляем обработку шаблонов
-        await handle_template_states(message, state, current_state)
-    else:
-        logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
-        await message.reply("Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
+    # 🚀 Оптимизированная маршрутизация по состояниям (использует match-case в Python 3.10+)
+    match current_state.split(":")[0]:
+        case "OnboardingState":
+            await handle_onboarding_states(message, state, current_state)
+        case "EditCompanyState":
+            await handle_edit_company_states(message, state, current_state)
+        case "AddCampaignState":
+            await handle_add_campaign_states(message, state, current_state)
+        case "AddContentPlanState":
+            await handle_add_content_plan_states(message, state, current_state)
+        case "EmailUploadState":
+            await handle_email_upload_states(message, state, current_state)  # Новая группа состояний загрузки email
+        case "EmailProcessingDecisionState":
+            await handle_email_processing_decisions(message, state, current_state)  # Новая группа состояний обработки email
+        case "TemplateStates":
+            await handle_template_states(message, state, current_state)
+        case _:
+            logger.warning(f"⚠️ Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
+            await message.reply("Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
 

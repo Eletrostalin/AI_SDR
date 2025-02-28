@@ -31,14 +31,16 @@ class AddContentPlanState(StatesGroup):
     waiting_for_wave_details = State()
     waiting_for_confirmation = State()
 
-class AddEmailSegmentationState(StatesGroup):
-    """
-    Состояния для добавления таблицы сегментации по email.
-    """
+class EmailUploadState(StatesGroup):
     waiting_for_file_upload = State()  # Ожидание загрузки файла
     waiting_for_mapping_confirmation = State()  # Подтверждение сопоставления колонок
     duplicate_email_check = State()  # Проверка записей с несколькими email
+
+
+class EmailProcessingDecisionState(StatesGroup):
     waiting_for_more_files_decision = State()  # Ожидание решения пользователя о загрузке еще одного файла
+    waiting_for_campaign_decision = State()  # Ожидание решения о старте кампании
+
 
 class EditCompanyState(StatesGroup):
     waiting_for_updated_info = State()

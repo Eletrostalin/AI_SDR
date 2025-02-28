@@ -10,20 +10,28 @@ from db.db_company import get_company_by_chat_id
 from aiogram import types, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
-from states.states import AddEmailSegmentationState
+from states.states import EmailUploadState, EmailProcessingDecisionState
 from utils.parser_email_table import save_cleaned_data, clean_dataframe, map_columns, clean_and_validate_emails
 from utils.segment_utils import generate_segment_table_name
 
 logger = logging.getLogger(__name__)
 router = Router()
 
-
-def get_yes_no_keyboard() -> InlineKeyboardMarkup:
-    """Создает инлайн-клавиатуру с кнопками 'Да' и 'Нет'."""
+def get_first_question_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для первого вопроса о загрузке еще одного файла."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да", callback_data="load_more_files")],
-            [InlineKeyboardButton(text="❌ Нет", callback_data="proceed_to_campaign")]
+            [InlineKeyboardButton(text="❌ Нет", callback_data="ask_campaign_question")]
+        ]
+    )
+
+def get_second_question_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для второго вопроса о начале кампании."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да", callback_data="proceed_to_campaign")],
+            [InlineKeyboardButton(text="❌ Нет", callback_data="go_back_to_upload")]
         ]
     )
 
@@ -68,7 +76,7 @@ async def handle_email_table_request(message: Message, state: FSMContext):
 
         # Сохранение состояния и данных
         await state.update_data(segment_table_name=segment_table_name)
-        await state.set_state(AddEmailSegmentationState.waiting_for_file_upload)
+        await state.set_state(EmailUploadState.waiting_for_file_upload)
 
         logger.debug(f"Состояние установлено: {await state.get_state()}")
         logger.debug(f"Сохранённые данные состояния: {await state.get_data()}")
@@ -83,7 +91,7 @@ async def handle_email_table_request(message: Message, state: FSMContext):
         await message.reply("Произошла ошибка. Попробуйте позже.")
 
 
-@router.message(StateFilter(AddEmailSegmentationState.waiting_for_file_upload))
+@router.message(StateFilter(EmailUploadState.waiting_for_file_upload))
 async def handle_file_upload(message: Message, state: FSMContext):
     """
     Обработчик загрузки таблицы с email-сегментацией.
@@ -207,8 +215,8 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
                 problematic_values=problematic_values
             )
 
-            logger.debug(f"🔄 Устанавливаем состояние: {AddEmailSegmentationState.duplicate_email_check}")
-            await state.set_state(AddEmailSegmentationState.duplicate_email_check)
+            logger.debug(f"🔄 Устанавливаем состояние: {EmailUploadState.duplicate_email_check}")
+            await state.set_state(EmailUploadState.duplicate_email_check)
             logger.debug(f"✅ Установлено состояние: {await state.get_state()}")
 
             # Подготовка значений для вывода в Telegram
@@ -231,7 +239,7 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
         return False
 
 
-@router.callback_query()
+@router.callback_query(StateFilter(EmailUploadState.duplicate_email_check))
 async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
     """
     Обрабатывает выбор пользователя: разделить email-адреса или запросить новый файл.
@@ -248,25 +256,18 @@ async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
 
     if choice == "split_emails":
         logger.info("✅ Пользователь выбрал разделение записей с несколькими email.")
-
         df = df.assign(**{email_column: df[email_column].str.split(r"[;, ]")}).explode(email_column)
         df[email_column] = df[email_column].str.strip()
 
         await call.message.edit_text("✅ Записи разделены! Теперь каждая строка содержит только **один** email.")
 
         await save_cleaned_data(df, segment_table_name, call.message)
-
-        # 🔥 Добавляем вызов вопроса о новых файлах после разделения email!
         await ask_about_more_files(call.message, state)
 
     elif choice == "upload_new_file":
         logger.info("🔄 Пользователь решил загрузить новый файл.")
-
-        await state.update_data(segment_table_name=segment_table_name, waiting_for_new_file=True)
-        await state.set_state(AddEmailSegmentationState.waiting_for_file_upload)
+        await state.set_state(EmailUploadState.waiting_for_file_upload)
         await call.message.edit_text("🔄 Пожалуйста, загрузите исправленный файл.")
-
-        # 🔥 Добавляем вызов вопроса после загрузки нового файла!
         await ask_about_more_files(call.message, state)
 
     else:
@@ -275,30 +276,26 @@ async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
 
 async def ask_about_more_files(message: Message, state: FSMContext):
     """
-    Спрашивает пользователя, хочет ли он загрузить еще один файл или перейти к кампании.
+    Спрашивает пользователя, хочет ли он загрузить еще один файл.
     """
-    logger.debug(f"🔄 Устанавливаем состояние: {AddEmailSegmentationState.waiting_for_more_files_decision}")
-    await state.set_state(AddEmailSegmentationState.waiting_for_more_files_decision)
-
-    # 🔥 Даем немного времени FSM для записи состояния
-    import asyncio
-    await asyncio.sleep(0.1)
+    logger.debug(f"🔄 Устанавливаем состояние: {EmailProcessingDecisionState.waiting_for_more_files_decision}")
+    await state.set_state(EmailProcessingDecisionState.waiting_for_more_files_decision)
 
     current_state = await state.get_state()
     logger.debug(f"✅ После паузы состояние: {current_state}")
 
     await message.reply(
         "Вы хотите загрузить еще один файл с базой email?",
-        reply_markup=get_yes_no_keyboard()
+        reply_markup=get_first_question_keyboard()
     )
 
         
-@router.callback_query(F.data.in_(["load_more_files", "proceed_to_campaign"]), StateFilter(AddEmailSegmentationState.waiting_for_more_files_decision))
-async def handle_more_files_decision(call: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.in_(["load_more_files", "ask_campaign_question"]), StateFilter(EmailProcessingDecisionState.waiting_for_more_files_decision))
+async def handle_first_question_decision(call: CallbackQuery, state: FSMContext):
     """
-    Обрабатывает выбор пользователя после загрузки файла:
-    - "Загрузить еще один файл"
-    - "Перейти к кампании"
+    Обрабатывает первый опрос:
+    - "Загрузить еще один файл?" -> Ждем загрузку файла.
+    - "Нет" -> Переход ко второму вопросу про кампанию.
     """
     current_state = await state.get_state()
     logger.debug(f"📌 Текущее состояние перед обработкой колбэка: {current_state}")
@@ -306,17 +303,60 @@ async def handle_more_files_decision(call: CallbackQuery, state: FSMContext):
 
     if call.data == "load_more_files":
         logger.info("🔄 Пользователь выбрал загрузку еще одного файла.")
-
-        await state.set_state(AddEmailSegmentationState.waiting_for_file_upload)
+        await state.set_state(EmailUploadState.waiting_for_file_upload)
+        logger.debug(f"✅ Установлено новое состояние: {await state.get_state()}")
         await call.message.edit_text("🔄 Пожалуйста, загрузите новый файл с email-базой.")
 
-    elif call.data == "proceed_to_campaign":
-        logger.info("🎯 Пользователь готов к созданию рекламной кампании.")
+    elif call.data == "ask_campaign_question":
+        logger.info("🔄 Пользователь отказался загружать файлы. Спрашиваем про кампанию.")
+        await state.set_state(EmailProcessingDecisionState.waiting_for_campaign_decision)
+        logger.debug(f"✅ Установлено новое состояние: {await state.get_state()}")
+        await call.message.edit_text(
+            "Вы готовы приступить к созданию рекламной кампании?",
+            reply_markup=get_second_question_keyboard()
+        )
 
+
+@router.callback_query(F.data.in_(["proceed_to_campaign", "go_back_to_upload"]), StateFilter(EmailProcessingDecisionState.waiting_for_campaign_decision))
+async def handle_second_question_decision(call: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает второй опрос:
+    - "Готов к кампании" -> Завершение.
+    - "Нет" -> Возвращение к загрузке файлов.
+    """
+    current_state = await state.get_state()
+    logger.debug(f"📌 Текущее состояние перед обработкой колбэка: {current_state}")
+    logger.debug(f"🎯 Получен колбек: {call.data}")
+
+    if call.data == "proceed_to_campaign":
+        logger.info("🎯 Пользователь готов к созданию рекламной кампании.")
         await state.clear()
         await call.message.edit_text("🚀 Отлично! Теперь давайте создадим рекламную кампанию.")
 
+    elif call.data == "go_back_to_upload":
+        logger.info("🔄 Пользователь вернулся к загрузке файлов.")
+        await state.set_state(EmailUploadState.waiting_for_file_upload)
+        await call.message.edit_text("🔄 Пожалуйста, загрузите новый файл с email-базой.")
+
+
+async def handle_campaign_decision(call: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает выбор пользователя: начинать кампанию или вернуться к загрузке файлов.
+    """
+    logger.debug(f"📌 Текущее состояние перед обработкой кампании: {await state.get_state()}")
+    logger.debug(f"🎯 Получен колбек: {call.data}")
+
+    if call.data == "proceed_to_campaign":
+        logger.info("🚀 Пользователь выбрал запуск кампании.")
+        await state.clear()
+        await call.message.edit_text("🚀 Отлично! Теперь давайте создадим рекламную кампанию.")
+
+    elif call.data == "go_back_to_upload":
+        logger.info("🔄 Пользователь выбрал вернуться к загрузке файлов.")
+        await state.set_state(EmailUploadState.waiting_for_file_upload)
+        await call.message.edit_text("🔄 Пожалуйста, загрузите новый файл с email-базой.")
+
     else:
-        await call.answer("❌ Неверный выбор.", show_alert=True)
+        await call.answer("❌ Неверный выбор!!!.", show_alert=True)
 
 

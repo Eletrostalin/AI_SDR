@@ -24,17 +24,17 @@ from handlers.campaign_handlers.campaign_handlers import (
     process_campaign_data,
     process_filters
 )
-from handlers.email_table_handler import handle_file_upload, handle_email_choice_callback, handle_more_files_decision
+from handlers.email_table_handler import handle_file_upload, handle_email_choice_callback, handle_campaign_decision, \
+    handle_first_question_decision, handle_second_question_decision
 from handlers.onboarding_handler import (
     handle_brief_upload, process_brief, confirm_brief, handle_missing_fields_response)
 from handlers.template_handlers.template_handler import handle_user_input, confirm_template
 from states.states import (
     OnboardingState,
-    AddEmailSegmentationState,
     EditCompanyState,
     AddCampaignState,
     AddContentPlanState,
-    AddCompanyState, TemplateStates
+    AddCompanyState, TemplateStates, EmailProcessingDecisionState, EmailUploadState
 )
 
 from logger import logger
@@ -62,18 +62,17 @@ async def handle_onboarding_states(message: Message, state: FSMContext, current_
         await state.clear()
 
 
-async def handle_add_email_segmentation_states(event: Message | CallbackQuery, state: FSMContext, current_state: str):
+async def handle_email_upload_states(event: Message | CallbackQuery, state: FSMContext, current_state: str):
     """
-    Обрабатывает состояния добавления email-таблицы.
-    Поддерживает как обычные сообщения (`Message`), так и callback-запросы (`CallbackQuery`).
+    Обрабатывает состояния, связанные с загрузкой email-таблицы.
     """
-    logger.debug(f"🔄 Обрабатываем состояние: {current_state} | Тип события: {type(event)}")
+    logger.debug(f"🔄 Обрабатываем состояние загрузки файла: {current_state} | Тип события: {type(event)}")
 
     if isinstance(event, Message):  # Если это обычное сообщение
-        if current_state == AddEmailSegmentationState.waiting_for_file_upload:
+        if current_state == EmailUploadState.waiting_for_file_upload:
             await handle_file_upload(event, state)
 
-        elif current_state == AddEmailSegmentationState.duplicate_email_check:
+        elif current_state == EmailUploadState.duplicate_email_check:
             await handle_email_choice_callback(event, state)  # Обрабатываем выбор пользователя по email
 
         else:
@@ -81,12 +80,25 @@ async def handle_add_email_segmentation_states(event: Message | CallbackQuery, s
             await event.reply("Произошла ошибка. Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
 
     elif isinstance(event, CallbackQuery):  # Если это callback-запрос
-        if current_state == AddEmailSegmentationState.waiting_for_more_files_decision:
-            await handle_more_files_decision(event, state)  # Обрабатываем выбор загрузки файлов
+        logger.warning(f"⚠️ Callback получен в состоянии загрузки email, но не обработан: {current_state}")
+        await event.answer("Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
 
-        else:
-            logger.warning(f"⚠️ Неизвестное состояние для callback: {current_state}.")
-            await event.answer("Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
+
+async def handle_email_processing_decisions(event: CallbackQuery, state: FSMContext, current_state: str):
+    """
+    Обрабатывает состояния, связанные с выбором дальнейших действий (добавление еще файлов или запуск кампании).
+    """
+    logger.debug(f"🔄 Обрабатываем состояние выбора: {current_state} | Тип события: {type(event)}")
+
+    if current_state == EmailProcessingDecisionState.waiting_for_more_files_decision:
+        await handle_first_question_decision(event, state)  # Обрабатываем выбор загрузки файлов
+
+    elif current_state == EmailProcessingDecisionState.waiting_for_campaign_decision:
+        await handle_second_question_decision(event, state)  # Обрабатываем выбор старта кампании
+
+    else:
+        logger.warning(f"⚠️ Неизвестное состояние для callback: {current_state}.")
+        await event.answer("Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
 
 
 # Обработка состояний редактирования компании

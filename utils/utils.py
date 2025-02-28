@@ -1,5 +1,4 @@
-import requests
-from bs4 import BeautifulSoup
+import pandas as pd
 import pdfplumber
 from docx import Document
 import mimetypes
@@ -43,64 +42,25 @@ def send_to_model(prompt: str) -> dict:
         raise
 
 
-# Извлечение текста из ссылки
-def extract_text_from_url(url: str) -> str:
+async def find_header_row(df: pd.DataFrame) -> int:
     """
-    Извлекает текст с веб-страницы по URL.
+    Определяет строку заголовков, выбирая первую строку, где:
+    - Нет NaN
+    - Все значения являются строками (без чисел и спецсимволов)
     """
-    response = requests.get(url)
-    response.raise_for_status()  # Проверка на успешность запроса
-    soup = BeautifulSoup(response.text, "html.parser")
-    return soup.get_text()
+    for i in range(len(df)):
+        row = df.iloc[i]
 
-# Извлечение текста из документа
-def extract_text_from_document(file_path: str, file_name: str) -> str:
-    """
-    Извлекает текст из документа. Поддерживаются форматы .pdf, .docx, .txt.
-    """
-    text = ""
-    if file_name.endswith(".pdf"):
-        text = extract_text_from_pdf(file_path)
-    elif file_name.endswith(".docx"):
-        text = extract_text_from_docx(file_path)
-    elif file_name.endswith(".txt"):
-        text = extract_text_from_txt(file_path)
-    else:
-        raise ValueError(f"Формат файла {file_name} не поддерживается.")
-    return text
+        # Проверяем, есть ли NaN
+        if row.isna().any():
+            continue  # Пропускаем строки с пустыми значениями
 
-def extract_text_from_pdf(file_path: str) -> str:
-    """
-    Извлекает текст из PDF-документа с использованием pdfplumber.
-    """
-    text = ""
-    try:
-        with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages:
-                text += page.extract_text() + "\n"
-    except Exception as e:
-        raise ValueError(f"Ошибка при обработке PDF: {e}")
-    return text.strip()
+        # Проверяем, что все ячейки содержат только текст (и не являются числами)
+        if all(isinstance(cell, str) and cell.isprintable() for cell in row):
+            return i  # Это заголовки!
 
-def extract_text_from_docx(file_path: str) -> str:
-    """
-    Извлекает текст из .docx документа.
-    """
-    try:
-        doc = Document(file_path)
-        return " ".join([p.text for p in doc.paragraphs]).strip()
-    except Exception as e:
-        raise ValueError(f"Ошибка при обработке DOCX: {e}")
+    return 0  # Если не нашли, используем первую строку по умолчанию
 
-def extract_text_from_txt(file_path: str) -> str:
-    """
-    Извлекает текст из .txt файла.
-    """
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception as e:
-        raise ValueError(f"Ошибка при обработке TXT: {e}")
 
 # Определение типа сообщения
 async def process_message(message, bot):

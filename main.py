@@ -60,7 +60,7 @@ def setup_routers(dp: Dispatcher):
     # Регистрация команды для удаления кампании
     dp.message.register(
         handle_delete_campaign_request,
-        Command("delete_campaign")  # Используем Command фильтр
+        Command("delete_campaign")  # Используем Command фильтр5
     )
 
     # Регистрация обработчика инлайн-кнопок для удаления кампаний

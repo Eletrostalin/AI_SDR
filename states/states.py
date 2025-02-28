@@ -38,6 +38,7 @@ class AddEmailSegmentationState(StatesGroup):
     waiting_for_file_upload = State()  # Ожидание загрузки файла
     waiting_for_mapping_confirmation = State()  # Подтверждение сопоставления колонок
     duplicate_email_check = State()  # Проверка записей с несколькими email
+    waiting_for_more_files_decision = State()  # Ожидание решения пользователя о загрузке еще одного файла
 
 class EditCompanyState(StatesGroup):
     waiting_for_updated_info = State()

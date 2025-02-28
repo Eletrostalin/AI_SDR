@@ -1,5 +1,6 @@
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
+from aiogram.types import CallbackQuery
 
 # Импорт обработчиков для различных состояний
 from handlers.company_handlers.company_handlers import (
@@ -23,7 +24,7 @@ from handlers.campaign_handlers.campaign_handlers import (
     process_campaign_data,
     process_filters
 )
-from handlers.email_table_handler import handle_file_upload, handle_email_choice_callback
+from handlers.email_table_handler import handle_file_upload, handle_email_choice_callback, handle_more_files_decision
 from handlers.onboarding_handler import (
     handle_brief_upload, process_brief, confirm_brief, handle_missing_fields_response)
 from handlers.template_handlers.template_handler import handle_user_input, confirm_template
@@ -61,19 +62,29 @@ async def handle_onboarding_states(message: Message, state: FSMContext, current_
         await state.clear()
 
 
-async def handle_add_email_segmentation_states(message: Message, state: FSMContext, current_state: str):
+async def handle_add_email_segmentation_states(event: Message | CallbackQuery, state: FSMContext, current_state: str):
     """
     Обрабатывает состояния добавления email-таблицы.
+    Поддерживает как обычные сообщения (`Message`), так и callback-запросы (`CallbackQuery`).
     """
-    if current_state == AddEmailSegmentationState.waiting_for_file_upload.state:
-        await handle_file_upload(message, state)
+    if isinstance(event, Message):  # Если это обычное сообщение
+        if current_state == AddEmailSegmentationState.waiting_for_file_upload.state:
+            await handle_file_upload(event, state)
 
-    elif current_state == AddEmailSegmentationState.duplicate_email_check.state:
-        await handle_email_choice_callback(message, state)  # Обрабатываем выбор пользователя по email
+        elif current_state == AddEmailSegmentationState.duplicate_email_check.state:
+            await handle_email_choice_callback(event, state)  # Обрабатываем выбор пользователя по email
 
-    else:
-        logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
-        await message.reply("Произошла ошибка. Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
+        else:
+            logger.warning(f"Неизвестное состояние: {current_state}. Сообщение будет проигнорировано.")
+            await event.reply("Произошла ошибка. Непонятное состояние. Попробуйте ещё раз или свяжитесь с поддержкой.")
+
+    elif isinstance(event, CallbackQuery):  # Если это callback-запрос
+        if current_state == AddEmailSegmentationState.waiting_for_more_files_decision.state:
+            await handle_more_files_decision(event, state)  # Добавляем поддержку выбора загрузки файлов
+
+        else:
+            logger.warning(f"Неизвестное состояние для callback: {current_state}.")
+            await event.answer("Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
 
 
 # Обработка состояний редактирования компании

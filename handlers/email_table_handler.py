@@ -98,7 +98,6 @@ async def handle_file_upload(message: Message, state: FSMContext):
     """
     logger.debug(f"📂 Получено сообщение. Текущее состояние: {await state.get_state()}")
 
-    # Если пользователь отправил сообщение без файла
     if not message.document:
         logger.warning("⚠️ Пользователь отправил сообщение без файла.")
         await message.reply("❌ Пожалуйста, отправьте файл в формате Excel (.xlsx, .xls).")
@@ -125,7 +124,6 @@ async def handle_file_upload(message: Message, state: FSMContext):
         state_data = await state.get_data()
         segment_table_name = state_data.get("segment_table_name")
 
-        # Если segment_table_name отсутствует, генерируем заново
         if segment_table_name is None:
             chat_id = message.chat.id
 
@@ -136,11 +134,10 @@ async def handle_file_upload(message: Message, state: FSMContext):
                     await message.reply("❌ Ошибка: Не удалось найти компанию, связанную с вашим чатом.")
                     return
 
-                company_id = company.company_id  # Исправлено!
+                company_id = company.company_id
                 segment_table_name = generate_segment_table_name(company_id)
                 logger.debug(f"🔄 Повторное создание имени таблицы: {segment_table_name}")
 
-            # Обновляем state с новым segment_table_name
             await state.update_data(segment_table_name=segment_table_name)
 
         logger.debug(f"📌 Используемое имя таблицы: {segment_table_name}")
@@ -150,14 +147,7 @@ async def handle_file_upload(message: Message, state: FSMContext):
 
         if is_processed:
             await message.reply(f"✅ Файл обработан успешно и сохранён в таблицу: `{segment_table_name}`.")
-
-            # 🔥 Добавляем вызов вопроса о новых файлах после успешной обработки!
             await ask_about_more_files(message, state)
-        else:
-            logger.warning(f"⚠️ Ошибки при обработке файла {document.file_name}.")
-            await message.reply("⚠️ Ошибка при обработке файла. Проверьте данные и попробуйте ещё раз.")
-
-        #await state.clear()
 
     except Exception as e:
         logger.error(f"❌ Ошибка при обработке файла {document.file_name}: {e}", exc_info=True)
@@ -219,7 +209,6 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
             await state.set_state(EmailUploadState.duplicate_email_check)
             logger.debug(f"✅ Установлено состояние: {await state.get_state()}")
 
-            # Подготовка значений для вывода в Telegram
             values_display = "\n".join([f"🔹 **Строка {row}**: `{val}`" for row, val in zip(problematic_rows, problematic_values)])
 
             await message.reply(
@@ -228,15 +217,15 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
                 "Выберите, как поступить:",
                 reply_markup=get_email_choice_keyboard()
             )
-            return False  # Ждём ответа пользователя
+
+            return False  # ⚠️ Важно: Это уже обработано, поэтому `handle_file_upload` НЕ должен отправлять сообщение!
 
         await save_cleaned_data(df, segment_table_name, message)
         return True
 
     except Exception as e:
         logger.error(f"❌ Ошибка при обработке файла {file_path}: {e}", exc_info=True)
-        await message.reply(f"❌ Произошла ошибка при обработке файла: {e}")
-        return False
+        return False  # Ошибка логируется, но **сообщение пользователю НЕ отправляется**
 
 
 @router.callback_query(StateFilter(EmailUploadState.duplicate_email_check))
@@ -322,7 +311,7 @@ async def handle_second_question_decision(call: CallbackQuery, state: FSMContext
     """
     Обрабатывает второй опрос:
     - "Готов к кампании" -> Завершение.
-    - "Нет" -> Возвращение к загрузке файлов.
+    - "Нет" -> Возвращение к загрузке файлов + сообщение пользователю.
     """
     current_state = await state.get_state()
     logger.debug(f"📌 Текущее состояние перед обработкой колбэка: {current_state}")
@@ -334,9 +323,9 @@ async def handle_second_question_decision(call: CallbackQuery, state: FSMContext
         await call.message.edit_text("🚀 Отлично! Теперь давайте создадим рекламную кампанию.")
 
     elif call.data == "go_back_to_upload":
-        logger.info("🔄 Пользователь вернулся к загрузке файлов.")
-        await state.set_state(EmailUploadState.waiting_for_file_upload)
-        await call.message.edit_text("🔄 Пожалуйста, загрузите новый файл с email-базой.")
+        # ✅ Добавляем сообщение о том, что пользователь может вернуться позже
+        await state.clear()
+        await call.message.answer("Хорошо, напишите мне, когда будете готовы продолжить. Я всегда на связи.")
 
 
 async def handle_campaign_decision(call: CallbackQuery, state: FSMContext):

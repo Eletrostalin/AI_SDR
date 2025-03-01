@@ -10,6 +10,8 @@ from db.db_company import get_company_by_chat_id
 from aiogram import types, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
+
+from handlers.campaign_handlers.campaign_handlers import handle_add_campaign
 from states.states import EmailUploadState, EmailProcessingDecisionState
 from utils.parser_email_table import save_cleaned_data, clean_dataframe, map_columns, clean_and_validate_emails
 from utils.segment_utils import generate_segment_table_name
@@ -320,6 +322,7 @@ async def handle_second_question_decision(call: CallbackQuery, state: FSMContext
         logger.info("🎯 Пользователь готов к созданию рекламной кампании.")
         await state.clear()
         await call.message.edit_text("🚀 Отлично! Теперь давайте создадим рекламную кампанию.")
+        await handle_add_campaign(call.message, state)
 
     elif call.data == "go_back_to_upload":
         # ✅ Добавляем сообщение о том, что пользователь может вернуться позже

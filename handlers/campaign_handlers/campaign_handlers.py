@@ -1,6 +1,7 @@
 from aiogram.filters import StateFilter
 from admin.ThreadManager import create_thread
 from db.db_thread import save_campaign_to_db, save_thread_to_db
+from db.models import Campaigns
 from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from logger import logger
 from db.db import SessionLocal
@@ -16,31 +17,82 @@ from utils.utils import send_to_model
 router = Router()
 
 
+
 @router.message(StateFilter(None))
 async def handle_add_campaign(message: Message, state: FSMContext):
     """
-    Начало добавления кампании: запрос имени кампании.
+    Инициирует создание рекламной кампании.
+    Запрашивает у пользователя название.
     """
-    await message.reply("Введите название новой кампании:")
-    await state.set_state(AddCampaignState.waiting_for_campaign_name)
+    await message.answer("Отлично! 🚀 Давайте настроим кампанию. Я помогу Вам на каждом этапе.")
+    await message.answer("Пожалуйста, укажите название рекламной кампании 🏷️")
+
+    # Устанавливаем состояние ожидания ввода названия кампании
+    await state.set_state(CampaignCreationState.waiting_for_campaign_name)
 
 
-@router.message(StateFilter(AddCampaignState.waiting_for_campaign_name))
+@router.message(StateFilter(CampaignCreationState.waiting_for_campaign_name))
 async def process_campaign_name(message: Message, state: FSMContext):
     """
-    Обрабатывает название кампании.
+    Обрабатывает введенное название кампании, создает запись в БД и тему чата.
     """
     campaign_name = message.text.strip()
+
     if not campaign_name:
-        await message.reply("Название кампании не может быть пустым. Пожалуйста, введите название ещё раз:")
+        await message.answer("⚠️ Название кампании не может быть пустым. Попробуйте ещё раз.")
         return
 
-    await state.update_data(campaign_name=campaign_name)
-    await message.reply(
-        "Теперь укажите дополнительные данные о кампании: дата начала, дата конца, параметры (например, ЦУ или регион). "
-        "Введите данные в любом порядке. Например: 'начало 01.01.2024, конец 31.01.2024, регион Москва'."
+    chat_id = message.chat.id  # Получаем chat_id пользователя
+
+    with SessionLocal() as db:
+        company = get_company_by_chat_id(db, str(chat_id))
+        if not company:
+            await message.answer("❌ Ошибка: Не удалось найти компанию.")
+            return
+
+        # Создаём тему чата
+        thread_id = await create_thread(chat_id, campaign_name)
+        if not thread_id:
+            await message.answer("⚠️ Не удалось создать тему чата. Попробуйте позже.")
+            return
+
+        # Записываем кампанию в БД
+        new_campaign = Campaigns(
+            company_id=company.company_id,
+            chat_id=chat_id,
+            campaign_name=campaign_name,
+            status="draft"
+        )
+        db.add(new_campaign)
+        db.commit()
+        campaign_id = new_campaign.campaign_id
+
+        # Записываем в БД связь `chat_id -> thread_id`
+        db.add(ChatThread(chat_id=chat_id, thread_id=thread_id, thread_name=campaign_name))
+        db.commit()
+
+    # Генерируем ссылку на тему
+    thread_link = f"https://t.me/c/{chat_id}/{thread_id}"
+    await message.answer(f"✅ Новая тема создана: **{campaign_name}**.\n"
+                         f"Для дальнейшей настройки перейдите в чат: [Перейти в тему]({thread_link})")
+
+    # Отправляем сообщение о фильтрации **в созданную тему**
+    segment_columns = ", ".join(EMAIL_SEGMENT_COLUMNS)
+    await message.bot.send_message(
+        chat_id=chat_id,
+        message_thread_id=thread_id,
+        text=f"📊 **По какому критерию из базы email Вы хотите провести рассылку?**\n\n"
+             f"(Доступны только те поля, в которых заполнено хотя бы одно значение)\n\n"
+             f"🔹 {segment_columns}\n\n"
+             f"Введите ответ в формате:\n"
+             f"```\nКритерий - Значение\n```\n"
+             f"Вы можете выбрать одно или несколько полей.\n"
+             f"**Пример:**\n"
+             f"```\nРегион - Москва\nИмя директора - Сергей\n```"
     )
-    await state.set_state(AddCampaignState.waiting_for_campaign_data)
+
+    # Устанавливаем состояние ожидания фильтрации
+    await state.set_state(AddCampaignState.waiting_for_filters)
 
 
 @router.message(StateFilter(AddCampaignState.waiting_for_campaign_data))

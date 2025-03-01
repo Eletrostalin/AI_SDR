@@ -1,13 +1,14 @@
 from aiogram.filters import StateFilter
 from admin.ThreadManager import create_thread
-from db.db_thread import save_campaign_to_db, save_thread_to_db
+from db.db_campaign import create_campaign_and_thread, save_campaign_to_db
+from db.db_thread import save_thread_to_db
 from db.models import Campaigns
 from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
 from promts.campaign_promt import CAMPAIGN_DATA_PROMPT, EMAIL_SEGMENT_COLUMNS
-from states.states import AddCampaignState
+from states.states import AddCampaignState, CampaignCreationState
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
@@ -34,7 +35,7 @@ async def handle_add_campaign(message: Message, state: FSMContext):
 @router.message(StateFilter(CampaignCreationState.waiting_for_campaign_name))
 async def process_campaign_name(message: Message, state: FSMContext):
     """
-    Обрабатывает введенное название кампании, создает запись в БД и тему чата.
+    Обрабатывает введенное название кампании, создаёт запись в БД и тему чата.
     """
     campaign_name = message.text.strip()
 
@@ -42,60 +43,40 @@ async def process_campaign_name(message: Message, state: FSMContext):
         await message.answer("⚠️ Название кампании не может быть пустым. Попробуйте ещё раз.")
         return
 
-    chat_id = message.chat.id  # Получаем chat_id пользователя
+    chat_id = message.chat.id
 
-    with SessionLocal() as db:
-        company = get_company_by_chat_id(db, str(chat_id))
-        if not company:
-            await message.answer("❌ Ошибка: Не удалось найти компанию.")
-            return
+    try:
+        with SessionLocal() as db:
+            new_campaign = create_campaign_and_thread(db, chat_id, campaign_name)
 
-        # Создаём тему чата
-        thread_id = await create_thread(chat_id, campaign_name)
-        if not thread_id:
-            await message.answer("⚠️ Не удалось создать тему чата. Попробуйте позже.")
-            return
+        # Генерируем ссылку на тему
+        thread_link = f"https://t.me/c/{chat_id}/{new_campaign.thread_id}"
+        await message.answer(f"✅ Новая тема создана: **{campaign_name}**.\n"
+                             f"Для дальнейшей настройки перейдите в чат: [Перейти в тему]({thread_link})")
 
-        # Записываем кампанию в БД
-        new_campaign = Campaigns(
-            company_id=company.company_id,
+        # Отправляем сообщение о фильтрации **в созданную тему**
+        segment_columns = ", ".join(EMAIL_SEGMENT_COLUMNS)
+        await message.bot.send_message(
             chat_id=chat_id,
-            campaign_name=campaign_name,
-            status="draft"
+            message_thread_id=new_campaign.thread_id,
+            text=f"📊 **По какому критерию из базы email Вы хотите провести рассылку?**\n\n"
+                 f"(Доступны только те поля, в которых заполнено хотя бы одно значение)\n\n"
+                 f"🔹 {segment_columns}\n\n"
+                 f"Введите ответ в формате:\n"
+                 f"```\nКритерий - Значение\n```\n"
+                 f"Вы можете выбрать одно или несколько полей.\n"
+                 f"**Пример:**\n"
+                 f"```\nРегион - Москва\nИмя директора - Сергей\n```"
         )
-        db.add(new_campaign)
-        db.commit()
-        campaign_id = new_campaign.campaign_id
 
-        # Записываем в БД связь `chat_id -> thread_id`
-        db.add(ChatThread(chat_id=chat_id, thread_id=thread_id, thread_name=campaign_name))
-        db.commit()
+        # Устанавливаем состояние ожидания фильтрации
+        await state.set_state(AddCampaignState.waiting_for_filters)
 
-    # Генерируем ссылку на тему
-    thread_link = f"https://t.me/c/{chat_id}/{thread_id}"
-    await message.answer(f"✅ Новая тема создана: **{campaign_name}**.\n"
-                         f"Для дальнейшей настройки перейдите в чат: [Перейти в тему]({thread_link})")
-
-    # Отправляем сообщение о фильтрации **в созданную тему**
-    segment_columns = ", ".join(EMAIL_SEGMENT_COLUMNS)
-    await message.bot.send_message(
-        chat_id=chat_id,
-        message_thread_id=thread_id,
-        text=f"📊 **По какому критерию из базы email Вы хотите провести рассылку?**\n\n"
-             f"(Доступны только те поля, в которых заполнено хотя бы одно значение)\n\n"
-             f"🔹 {segment_columns}\n\n"
-             f"Введите ответ в формате:\n"
-             f"```\nКритерий - Значение\n```\n"
-             f"Вы можете выбрать одно или несколько полей.\n"
-             f"**Пример:**\n"
-             f"```\nРегион - Москва\nИмя директора - Сергей\n```"
-    )
-
-    # Устанавливаем состояние ожидания фильтрации
-    await state.set_state(AddCampaignState.waiting_for_filters)
+    except ValueError as e:
+        await message.answer(f"❌ Ошибка: {e}")
 
 
-@router.message(StateFilter(AddCampaignState.waiting_for_campaign_data))
+@router.message(StateFilter(AddCampaignState.waiting_for_missing_data))
 async def process_campaign_data(message: Message, state: FSMContext):
     """
     Обрабатывает данные кампании, отправляя их в модель для анализа.

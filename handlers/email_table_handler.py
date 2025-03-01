@@ -257,7 +257,6 @@ async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
         logger.info("🔄 Пользователь решил загрузить новый файл.")
         await state.set_state(EmailUploadState.waiting_for_file_upload)
         await call.message.edit_text("🔄 Пожалуйста, загрузите исправленный файл.")
-        await ask_about_more_files(call.message, state)
 
     else:
         await call.answer("❌ Неверный выбор.", show_alert=True)

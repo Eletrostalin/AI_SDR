@@ -321,7 +321,6 @@ async def handle_second_question_decision(call: CallbackQuery, state: FSMContext
     if call.data == "proceed_to_campaign":
         logger.info("🎯 Пользователь готов к созданию рекламной кампании.")
         await state.clear()
-        await call.message.edit_text("🚀 Отлично! Теперь давайте создадим рекламную кампанию.")
         await handle_add_campaign(call.message, state)
 
     elif call.data == "go_back_to_upload":

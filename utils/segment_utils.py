@@ -84,7 +84,7 @@ def apply_filters_to_email_table(db: Session, email_table_id: int, filters: dict
     :return: DataFrame с отфильтрованными email-лидами.
     """
     try:
-        # Определяем название email-таблицы по email_table_id
+        # 1️⃣ Получаем имя таблицы по ID
         query_table = text("SELECT table_name FROM email_tables WHERE email_table_id = :email_table_id")
         result = db.execute(query_table, {"email_table_id": email_table_id}).fetchone()
 
@@ -92,10 +92,10 @@ def apply_filters_to_email_table(db: Session, email_table_id: int, filters: dict
             logger.error(f"❌ Email-таблица с ID {email_table_id} не найдена.")
             return pd.DataFrame()
 
-        table_name = result[0]  # Получаем имя таблицы
+        table_name = result[0]
         logger.info(f"📌 Используем email-таблицу: {table_name}")
 
-        # Загружаем данные
+        # 2️⃣ Загружаем данные из таблицы
         query_data = f"SELECT * FROM {table_name}"
         df = pd.read_sql(query_data, db.bind)
 
@@ -103,52 +103,94 @@ def apply_filters_to_email_table(db: Session, email_table_id: int, filters: dict
             logger.warning(f"⚠️ Таблица {table_name} пуста.")
             return pd.DataFrame()
 
-        # Применяем фильтры
-        for key, value in filters.items():
-            if key in df.columns:
-                if isinstance(value, dict):  # Операторы сравнения
-                    for op, val in value.items():
-                        if op == ">":
-                            df = df[df[key] > val]
-                        elif op == "<":
-                            df = df[df[key] < val]
-                elif isinstance(value, list):  # Списки значений
-                    df = df[df[key].isin(value)]
-                else:  # Простая фильтрация
-                    df = df[df[key] == value]
+        logger.debug(f"🔍 Загружено {len(df)} записей из таблицы {table_name}")
+        logger.debug(f"📋 Доступные колонки: {df.columns.tolist()}")
+        logger.debug(f"📊 Первые 5 строк:\n{df.head()}")
 
-        logger.info(f"✅ Применены фильтры: {filters}")
+        # 3️⃣ Применяем фильтры
+        logger.debug(f"🎯 Применяем фильтры: {filters}")
+
+        for key, value in filters.items():
+            if key not in df.columns:
+                logger.warning(f"⚠️ Колонка '{key}' отсутствует в данных.")
+                continue
+
+            before_count = len(df)
+
+            # 🔹 Операторы сравнения (>, <)
+            if isinstance(value, dict):
+                for op, val in value.items():
+                    if op == ">" and pd.api.types.is_numeric_dtype(df[key]):
+                        df = df[df[key] > val]
+                    elif op == "<" and pd.api.types.is_numeric_dtype(df[key]):
+                        df = df[df[key] < val]
+                    else:
+                        logger.warning(f"⚠️ Некорректный оператор `{op}` для {key}: {val}")
+
+            # 🔹 Фильтр по списку значений
+            elif isinstance(value, list):
+                df = df[df[key].astype(str).isin(map(str, value))]
+
+            # 🔹 Фильтр по наличию / отсутствию данных
+            elif isinstance(value, bool):
+                if value:  # True → Только строки, где есть данные
+                    df = df[df[key].notna() & (df[key].astype(str).str.strip() != "")]
+                else:  # False → Только строки, где данных нет
+                    df = df[df[key].isna() | (df[key].astype(str).str.strip() == "")]
+
+            # 🔹 Простая фильтрация (строка, число)
+            else:
+                df = df[df[key].astype(str) == str(value)]
+
+            after_count = len(df)
+            logger.debug(f"📌 Фильтр `{key}` → {value}: {before_count} → {after_count} записей")
+
+        logger.info(f"✅ Итоговое количество записей после фильтрации: {len(df)}")
         return df
 
     except Exception as e:
         logger.error(f"❌ Ошибка при фильтрации email-таблицы: {e}", exc_info=True)
         return pd.DataFrame()
 
-
 def generate_excel_from_df(df: pd.DataFrame, company_id: int, campaign_id: int) -> str:
     """
-    Генерирует Excel-файл с отфильтрованными данными.
+    Генерирует Excel-файл с отфильтрованными email-лидами.
 
-    :param df: DataFrame с email-лидами.
+    :param df: DataFrame с отфильтрованными данными.
     :param company_id: ID компании.
     :param campaign_id: ID кампании.
-    :return: Путь к сохранённому файлу.
+    :return: Путь к сгенерированному файлу.
     """
-    output_dir = "filtered_email_exports"
-    os.makedirs(output_dir, exist_ok=True)  # ✅ Создаём папку, если её нет
+    try:
+        # ✅ Создаем директорию, если её нет
+        output_dir = "filtered_results"
+        os.makedirs(output_dir, exist_ok=True)
 
-    file_path = os.path.join(output_dir, f"filtered_emails_{company_id}_{campaign_id}.xlsx")
-    df.to_excel(file_path, index=False)  # ✅ Записываем в Excel
+        # ✅ Определяем путь к файлу
+        file_path = os.path.join(output_dir, f"filtered_emails_{company_id}_{campaign_id}.xlsx")
 
-    return file_path  # ✅ Возвращаем путь к файлу
+        # ✅ Сохраняем DataFrame в Excel
+        df.to_excel(file_path, index=False)
+
+        logger.info(f"📂 Файл с фильтрованными email-лидами сохранён: {file_path}")
+        return file_path
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при генерации Excel-файла: {e}", exc_info=True)
+        return ""
 
 
 def generate_segment_table_name(company_id: int) -> str:
     """
-    Генерирует имя таблицы на основе ID компании.
+    Генерирует имя таблицы сегментации email-лидов на основе ID компании,
+    исключая знак "-" для корректности SQL-запросов.
+
+    :param company_id: ID компании (может быть отрицательным).
+    :return: Корректное название таблицы в формате segmentation_email_<company_id>.
     """
     if company_id is None:
         logger.error("❌ Ошибка: передан company_id=None при генерации имени таблицы.")
         return None
 
-    return f"table_{company_id}"
+    sanitized_company_id = abs(company_id)  # Убираем знак "-" (если есть)
+    return f"segmentation_email_{sanitized_company_id}"

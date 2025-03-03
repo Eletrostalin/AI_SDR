@@ -1,22 +1,20 @@
-import types
-
+from aiogram.types import FSInputFile
+from sqlalchemy.sql import text
 from aiogram.filters import StateFilter
 from admin.ThreadManager import create_thread
 from db.db_campaign import create_campaign_and_thread, save_campaign_to_db
 from db.db_thread import save_thread_to_db
-from db.models import Campaigns
 from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from logger import logger
 from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
-from promts.campaign_promt import CAMPAIGN_DATA_PROMPT, EMAIL_SEGMENT_COLUMNS
+from promts.campaign_promt import EMAIL_SEGMENT_COLUMNS
 from states.states import AddCampaignState
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
 from utils.segment_utils import extract_filters_from_text, apply_filters_to_email_table, generate_excel_from_df
-from utils.utils import send_to_model
 
 router = Router()
 
@@ -51,20 +49,28 @@ async def process_campaign_name(message: Message, state: FSMContext):
 
     try:
         with SessionLocal() as db:
+            # ✅ Создаём кампанию
             new_campaign = await create_campaign_and_thread(bot, db, chat_id, campaign_name)
 
-        # ✅ Генерируем ссылку на тему
-        thread_link = f"https://t.me/c/{chat_id}/{new_campaign.thread_id}"
-        await message.answer(
-            f"✅ Новая тема создана: **{campaign_name}**.\n"
-            f"Для дальнейшей настройки перейдите в чат: [Перейти в тему]({thread_link})"
-        )
+            # ✅ Получаем email_table_id для компании
+            email_table = db.execute(
+                text("SELECT email_table_id FROM email_tables WHERE company_id = :company_id"),
+                {"company_id": new_campaign.company_id}
+            ).fetchone()
 
-        # ✅ Сохраняем кампанию в состояние FSM
+            if not email_table:
+                logger.warning(f"⚠️ Не найдена email-таблица для company_id={new_campaign.company_id}")
+                email_table_id = None
+            else:
+                email_table_id = email_table[0]
+                logger.info(f"📩 Используем email_table_id={email_table_id} для компании {new_campaign.company_id}")
+
+        # ✅ Сохраняем данные в state
         campaign_data = {
             "campaign_id": new_campaign.campaign_id,
-            "campaign_name": new_campaign.campaign_name,
-            "company_id": new_campaign.company_id,  # Добавляем ID компании для `process_filters`
+            "campaign_name": campaign_name,
+            "company_id": new_campaign.company_id,
+            "email_table_id": email_table_id
         }
         await state.update_data(campaign_data=campaign_data)
         logger.debug(f"✅ Кампания сохранена в state: {campaign_data}")
@@ -127,15 +133,17 @@ async def process_filters(message: Message, state: FSMContext):
         campaign_data = state_data.get("campaign_data", {})
         company_id = campaign_data.get("company_id")
         campaign_id = campaign_data.get("campaign_id")
+        email_table_id = campaign_data.get("email_table_id")
 
         logger.debug(f"🔍 Данные из state перед фильтрацией: {campaign_data}")
 
-        if not company_id or not campaign_id:
-            await message.reply("❌ Ошибка: Кампания не найдена.")
+        if not company_id or not campaign_id or not email_table_id:
+            await message.reply("❌ Ошибка: Кампания или email-таблица не найдена.")
             return
 
-        # ✅ Применяем фильтры к email-таблице компании
-        filtered_df = apply_filters_to_email_table(company_id, filters)
+        # ✅ Открываем сессию БД и применяем фильтры
+        with SessionLocal() as db:
+            filtered_df = apply_filters_to_email_table(db, email_table_id, filters)
 
         if filtered_df.empty:
             await message.reply("⚠️ По заданным фильтрам не найдено ни одной записи.")
@@ -146,7 +154,7 @@ async def process_filters(message: Message, state: FSMContext):
 
         # ✅ Отправляем файл пользователю
         await message.reply_document(
-            types.FSInputFile(excel_path),
+            FSInputFile(excel_path),
             caption="📂 Ваш файл с отфильтрованными email-лидами."
         )
 
@@ -159,10 +167,6 @@ async def process_filters(message: Message, state: FSMContext):
         # ✅ Спрашиваем о дате начала кампании
         await message.reply("📅 Укажите дату начала кампании (в формате ДД.ММ.ГГГГ):")
         await state.set_state(AddCampaignState.waiting_for_start_date)
-
-    except Exception as e:
-        logger.error(f"❌ Ошибка обработки фильтров через модель: {e}", exc_info=True)
-        await message.reply("❌ Произошла ошибка при обработке фильтров. Попробуйте ещё раз.")
 
     except Exception as e:
         logger.error(f"❌ Ошибка обработки фильтров через модель: {e}", exc_info=True)

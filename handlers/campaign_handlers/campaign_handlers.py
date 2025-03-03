@@ -1,4 +1,4 @@
-import json
+import types
 
 from aiogram.filters import StateFilter
 from admin.ThreadManager import create_thread
@@ -15,7 +15,7 @@ from aiogram import Router
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
-from utils.segment_utils import extract_filters_from_text
+from utils.segment_utils import extract_filters_from_text, apply_filters_to_email_table, generate_excel_from_df
 from utils.utils import send_to_model
 
 router = Router()
@@ -47,45 +47,60 @@ async def process_campaign_name(message: Message, state: FSMContext):
         return
 
     chat_id = message.chat.id
-    bot = message.bot  # Добавлено получение бота
+    bot = message.bot
 
     try:
         with SessionLocal() as db:
-            new_campaign = await create_campaign_and_thread(bot, db, chat_id, campaign_name)  # Исправленный вызов
+            new_campaign = await create_campaign_and_thread(bot, db, chat_id, campaign_name)
 
-        # Генерируем ссылку на тему
+        # ✅ Генерируем ссылку на тему
         thread_link = f"https://t.me/c/{chat_id}/{new_campaign.thread_id}"
-        await message.answer(f"✅ Новая тема создана: **{campaign_name}**.\n"
-                             f"Для дальнейшей настройки перейдите в чат: [Перейти в тему]({thread_link})")
+        await message.answer(
+            f"✅ Новая тема создана: **{campaign_name}**.\n"
+            f"Для дальнейшей настройки перейдите в чат: [Перейти в тему]({thread_link})"
+        )
 
-        # Переводим названия сегментов на русский
-        EMAIL_SEGMENT_TRANSLATIONS = {
-            "region": "Регион",
-            "director_name": "Имя директора",
-            "company_size": "Размер компании",
-            "industry": "Отрасль",
-            "email_status": "Статус email",
-            "last_contact": "Последний контакт"
+        # ✅ Сохраняем кампанию в состояние FSM
+        campaign_data = {
+            "campaign_id": new_campaign.campaign_id,
+            "campaign_name": new_campaign.campaign_name,
+            "company_id": new_campaign.company_id,  # Добавляем ID компании для `process_filters`
         }
+        await state.update_data(campaign_data=campaign_data)
+        logger.debug(f"✅ Кампания сохранена в state: {campaign_data}")
+
+        # ✅ Отправляем сообщение о фильтрации в созданную тему
+        EMAIL_SEGMENT_TRANSLATIONS = {
+            "name": "Название компании",
+            "region": "Регион",
+            "msp_registry": "Реестр МСП",
+            "director_name": "Имя директора",
+            "director_position": "Должность директора",
+            "phone_number": "Телефон",
+            "email": "Email",
+            "website": "Веб-сайт",
+            "primary_activity": "Основная деятельность",
+            "revenue": "Выручка",
+            "employee_count": "Количество сотрудников"
+        }
+
         segment_columns = ", ".join(
             EMAIL_SEGMENT_TRANSLATIONS.get(col, col) for col in EMAIL_SEGMENT_COLUMNS
         )
 
-        # Отправляем сообщение о фильтрации **в созданную тему**
         await message.bot.send_message(
             chat_id=chat_id,
             message_thread_id=new_campaign.thread_id,
-            text=f"📊 **По какому критерию из базы email Вы хотите провести рассылку?**\n\n"
-                 f"(Доступны только те поля, в которых заполнено хотя бы одно значение)\n\n"
+            text=f"(Доступны только те поля, в которых заполнено хотя бы одно значение)\n\n"
                  f"🔹 {segment_columns}\n\n"
                  f"Введите ответ в формате:\n"
-                 f"```\nКритерий - Значение\n```\n"
+                 f"\nКритерий - Значение\n\n"
                  f"Вы можете выбрать одно или несколько полей.\n"
-                 f"**Пример:**\n"
-                 f"```\nРегион - Москва\nИмя директора - Сергей\n```"
+                 f"Пример:\n"
+                 f"\nРегион - Москва\nИмя директора - Сергей\n"
         )
 
-        # Устанавливаем состояние ожидания фильтрации
+        # ✅ Устанавливаем состояние ожидания фильтрации
         await state.set_state(AddCampaignState.waiting_for_filters)
 
     except ValueError as e:
@@ -95,48 +110,59 @@ async def process_campaign_name(message: Message, state: FSMContext):
 @router.message(StateFilter(AddCampaignState.waiting_for_filters))
 async def process_filters(message: Message, state: FSMContext):
     """
-    Обрабатывает ввод фильтров сегментации с помощью модели.
+    Обрабатывает ввод фильтров сегментации с помощью модели и генерирует Excel-таблицу.
     """
     user_input = message.text.strip()
 
     try:
-        # Запускаем обработку через модель
+        # ✅ Отправляем текст в модель для извлечения фильтров
         filters = extract_filters_from_text(user_input)
 
-        # Если модель не смогла распознать фильтры, просим уточнить ввод
         if not filters:
             await message.reply("⚠️ Не удалось определить фильтры. Попробуйте переформулировать.")
             return
 
-        # Обновляем данные в состоянии
+        # ✅ Получаем данные кампании
         state_data = await state.get_data()
         campaign_data = state_data.get("campaign_data", {})
+        company_id = campaign_data.get("company_id")
+        campaign_id = campaign_data.get("campaign_id")
+
+        logger.debug(f"🔍 Данные из state перед фильтрацией: {campaign_data}")
+
+        if not company_id or not campaign_id:
+            await message.reply("❌ Ошибка: Кампания не найдена.")
+            return
+
+        # ✅ Применяем фильтры к email-таблице компании
+        filtered_df = apply_filters_to_email_table(company_id, filters)
+
+        if filtered_df.empty:
+            await message.reply("⚠️ По заданным фильтрам не найдено ни одной записи.")
+            return
+
+        # ✅ Генерируем Excel-файл с результатами
+        excel_path = generate_excel_from_df(filtered_df, company_id, campaign_id)
+
+        # ✅ Отправляем файл пользователю
+        await message.reply_document(
+            types.FSInputFile(excel_path),
+            caption="📂 Ваш файл с отфильтрованными email-лидами."
+        )
+
+        # ✅ Обновляем данные в состоянии
         campaign_data["filters"] = filters
         await state.update_data(campaign_data=campaign_data)
 
-        logger.info(f"✅ Фильтры успешно обработаны: {filters}")
+        logger.info(f"✅ Фильтры успешно применены: {filters}")
 
-        # Переходим к подтверждению, если есть все данные
-        if campaign_data.get("start_date") and campaign_data.get("end_date"):
-            await message.reply(
-                f"📋 Проверьте данные кампании:\n"
-                f"🔹 **Название:** {campaign_data.get('campaign_name')}\n"
-                f"📅 **Дата начала:** {campaign_data['start_date']}\n"
-                f"📅 **Дата окончания:** {campaign_data['end_date']}\n"
-                f"📊 **Фильтры:** {json.dumps(filters, ensure_ascii=False, indent=2)}\n\n"
-                "Введите **'да'** для подтверждения или **'нет'** для отмены."
-            )
-            await state.set_state(AddCampaignState.waiting_for_confirmation)
+        # ✅ Спрашиваем о дате начала кампании
+        await message.reply("📅 Укажите дату начала кампании (в формате ДД.ММ.ГГГГ):")
+        await state.set_state(AddCampaignState.waiting_for_start_date)
 
-        else:
-            # Если нет даты старта, спрашиваем
-            if not campaign_data.get("start_date"):
-                await message.reply("📅 Укажите дату начала кампании (в формате ДД.ММ.ГГГГ):")
-                await state.set_state(AddCampaignState.waiting_for_start_date)
-            # Если нет даты окончания, спрашиваем
-            elif not campaign_data.get("end_date"):
-                await message.reply("📅 Укажите дату окончания кампании (в формате ДД.ММ.ГГГГ):")
-                await state.set_state(AddCampaignState.waiting_for_end_date)
+    except Exception as e:
+        logger.error(f"❌ Ошибка обработки фильтров через модель: {e}", exc_info=True)
+        await message.reply("❌ Произошла ошибка при обработке фильтров. Попробуйте ещё раз.")
 
     except Exception as e:
         logger.error(f"❌ Ошибка обработки фильтров через модель: {e}", exc_info=True)
@@ -330,135 +356,12 @@ def validate_model_response(response: dict, state_data: dict) -> dict:
         logger.debug(f"Ошибка в данных: {response}")
         return {}
 
-    # @router.message(StateFilter(AddCampaignState.waiting_for_missing_data))
-    # async def process_campaign_data(message: Message, state: FSMContext):
-    #     """
-    #     Обрабатывает данные кампании, отправляя их в модель для анализа.
-    #     """
-    #     user_input = message.text.strip()
-    #     logger.debug(f"Получен ввод данных кампании: {user_input}")
-    #
-    #     try:
-    #         # Проверяем наличие необходимых переменных
-    #         logger.debug(f"CAMPAIGN_DATA_PROMPT содержимое: {CAMPAIGN_DATA_PROMPT}")
-    #         logger.debug(f"EMAIL_SEGMENT_COLUMNS содержимое: {EMAIL_SEGMENT_COLUMNS}")
-    #
-    #         if not CAMPAIGN_DATA_PROMPT or not isinstance(CAMPAIGN_DATA_PROMPT, str):
-    #             raise ValueError("CAMPAIGN_DATA_PROMPT не определен или имеет неверный тип.")
-    #         if not EMAIL_SEGMENT_COLUMNS or not isinstance(EMAIL_SEGMENT_COLUMNS, list):
-    #             raise ValueError("EMAIL_SEGMENT_COLUMNS не определен или имеет неверный тип.")
-    #
-    #         # Формируем запрос для модели
-    #         prompt = CAMPAIGN_DATA_PROMPT.format(user_input=user_input)
-    #         logger.debug(f"Сформированный промт для модели: {prompt}")
-    #
-    #         # Отправляем запрос в модель
-    #         response = send_to_model(prompt)
-    #         logger.debug(f"Ответ модели: {response}")
-    #
-    #         # Обработка ответа от модели
-    #         import json
-    #         try:
-    #             campaign_data = json.loads(response)
-    #             logger.debug(f"Успешно декодирован JSON: {campaign_data}")
-    #         except json.JSONDecodeError as e:
-    #             logger.error(f"Ошибка декодирования JSON из ответа модели: {e}")
-    #             await message.reply("Ошибка обработки данных. Попробуйте уточнить запрос.")
-    #             return
-    #
-    #         # Получение данных состояния
-    #         state_data = await state.get_data()
-    #
-    #         # Валидация данных
-    #         campaign_data = validate_model_response(campaign_data, state_data)
-    #         logger.debug(f"Результат валидации: {campaign_data}")
-    #
-    #         if not campaign_data:
-    #             logger.error("Валидация завершилась неуспешно.")
-    #             await message.reply("Ошибка в обработке данных. Попробуйте снова.")
-    #             return
-    #
-    #         # Проверка на недостающие данные
-    #         missing_fields = []
-    #         if not campaign_data.get("start_date"):
-    #             missing_fields.append("дата начала")
-    #         if not campaign_data.get("end_date"):
-    #             missing_fields.append("дата конца")
-    #         if not campaign_data.get("filters"):
-    #             missing_fields.append("фильтры сегментации")
-    #
-    #         if missing_fields:
-    #             logger.debug(f"Недостающие данные: {missing_fields}")
-    #             await state.update_data(campaign_data=campaign_data)
-    #             await message.reply(
-    #                 f"Необходимо указать: {', '.join(missing_fields)}. Пожалуйста, уточните недостающие данные."
-    #             )
-    #             if not campaign_data.get("start_date"):
-    #                 await state.set_state(AddCampaignState.waiting_for_start_date)
-    #             elif not campaign_data.get("end_date"):
-    #                 await state.set_state(AddCampaignState.waiting_for_end_date)
-    #             elif not campaign_data.get("filters"):
-    #                 await state.set_state(AddCampaignState.waiting_for_filters)
-    #             return
-    #
-    #         # Если все данные собраны
-    #         logger.debug("Все данные успешно собраны. Обновляем состояние.")
-    #         await state.update_data(campaign_data=campaign_data)
-    #         await message.reply(
-    #             f"Проверьте данные кампании:\n"
-    #             f"Название: {campaign_data.get('campaign_name')}\n"
-    #             f"Дата начала: {campaign_data['start_date']}\n"
-    #             f"Дата конца: {campaign_data['end_date']}\n"
-    #             f"Фильтры: {campaign_data['filters']}\n"
-    #             f"Параметры: {campaign_data.get('params')}\n\n"
-    #             "Введите 'да' для подтверждения или 'нет' для отмены."
-    #         )
-    #         await state.set_state(AddCampaignState.waiting_for_confirmation)
-    #
-    #     except Exception as e:
-    #         logger.error(f"Ошибка обработки данных кампании: {e}")
-    #         await message.reply("Произошла ошибка при обработке данных. Попробуйте снова.")
-    #
-    # @router.message(StateFilter(AddCampaignState.waiting_for_start_date))
-    # async def process_start_date(message: Message, state: FSMContext):
-    #     """
-    #     Обрабатывает дату начала кампании.
-    #     """
-    #     start_date = message.text.strip()
-    #     try:
-    #         from datetime import datetime
-    #         datetime.strptime(start_date, "%d.%m.%Y")
-    #
-    #         campaign_data = await state.get_data("campaign_data")
-    #         campaign_data["start_date"] = start_date
-    #         await state.update_data(campaign_data=campaign_data)
-    #
-    #         # Проверяем, есть ли дата окончания
-    #         if not campaign_data.get("end_date"):
-    #             await message.reply("Укажите дату окончания кампании (в формате ДД.ММ.ГГГГ):")
-    #             await state.set_state(AddCampaignState.waiting_for_end_date)
-    #         else:
-    #             await confirm_campaign(message, state)
-    #
-    #     except ValueError:
-    #         await message.reply("Некорректный формат даты. Укажите дату начала в формате ДД.ММ.ГГГГ.")
-    #
-    # @router.message(StateFilter(AddCampaignState.waiting_for_end_date))
-    # async def process_end_date(message: Message, state: FSMContext):
-    #     """
-    #     Обрабатывает дату окончания кампании.
-    #     """
-    #     end_date = message.text.strip()
-    #     try:
-    #         from datetime import datetime
-    #         datetime.strptime(end_date, "%d.%m.%Y")
-    #
-    #         campaign_data = await state.get_data("campaign_data")
-    #         campaign_data["end_date"] = end_date
-    #         await state.update_data(campaign_data=campaign_data)
-    #
-    #         # Переходим к подтверждению
-    #         await confirm_campaign(message, state)
-    #
-    #     except ValueError:
-    #         await message.reply("Некорректный формат даты. Укажите дату окончания в формате ДД.ММ.ГГГГ.")
+
+# text=f"📊 По какому критерию из базы email Вы хотите провести рассылку?\n\n"
+#                  f"(Доступны только те поля, в которых заполнено хотя бы одно значение)\n\n"
+#                  f"🔹 {segment_columns}\n\n"
+#                  f"Введите ответ в формате:\n"
+#                  f"\nКритерий - Значение\n\n"
+#                  f"Вы можете выбрать одно или несколько полей.\n"
+#                  f"Пример:\n"
+#                  f"\nРегион - Москва\nИмя директора - Сергей\n"

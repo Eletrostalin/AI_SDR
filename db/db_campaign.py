@@ -16,60 +16,65 @@ async def create_campaign_and_thread(
 ) -> Campaigns:
     """
     Создаёт новую тему (thread) в чате и кампанию в базе данных.
-
-    :param bot: Экземпляр бота для создания темы в Telegram.
-    :param db: Сессия БД.
-    :param chat_id: ID чата.
-    :param campaign_name: Название кампании.
-    :return: Объект Campaigns.
     """
-    logger.debug(f"Создание темы и кампании: chat_id={chat_id}, campaign_name={campaign_name}")
+    logger.debug(f"📌 Начало создания кампании: chat_id={chat_id}, campaign_name={campaign_name}")
 
     # Получаем компанию по chat_id
-    company = get_company_by_chat_id(db, str(chat_id))  # chat_id приводим к строке, если нужно
+    company = get_company_by_chat_id(db, str(chat_id))
     if not company:
-        logger.error(f"Компания для chat_id={chat_id} не найдена.")
+        logger.error(f"❌ Ошибка: Компания для chat_id={chat_id} не найдена.")
         raise ValueError("Ошибка: Компания не найдена.")
+
+    logger.debug(f"✅ Найдена компания: company_id={company.company_id}")
 
     # Проверяем, существует ли уже тема в БД
     thread = get_thread_by_chat_id(db, chat_id)
     if thread:
         thread_id = thread.thread_id
-        logger.debug(f"Используем существующую тему с thread_id={thread_id}")
+        logger.debug(f"📌 Используем существующую тему: thread_id={thread_id}")
     else:
         # Создаём новую тему в Telegram
         try:
             topic = await bot.create_forum_topic(chat_id=chat_id, name=campaign_name)
             thread_id = topic.message_thread_id  # Telegram API возвращает ID темы
             save_thread_to_db(db, chat_id, thread_id, thread_name=campaign_name)
-            logger.info(f"Создана новая тема: thread_id={thread_id}, chat_id={chat_id}")
+            logger.info(f"✅ Создана новая тема: thread_id={thread_id}, chat_id={chat_id}")
         except Exception as e:
-            logger.error(f"Ошибка при создании темы в Telegram: {e}", exc_info=True)
+            logger.error(f"❌ Ошибка при создании темы в Telegram: {e}", exc_info=True)
             raise ValueError("Ошибка при создании темы чата в Telegram.")
 
-    # Создаем кампанию
+    # Проверяем, существует ли уже кампания с таким именем и компанией
+    existing_campaign = db.query(Campaigns).filter_by(company_id=company.company_id, campaign_name=campaign_name).first()
+    if existing_campaign:
+        logger.warning(f"⚠️ Кампания с таким именем уже существует: id={existing_campaign.campaign_id}")
+        return existing_campaign
+
+    # Создаём кампанию
     new_campaign = Campaigns(
         company_id=company.company_id,
         campaign_name=campaign_name,
-        start_date=None,
-        end_date=None,
-        segments={},
-        thread_id=thread_id  # <-- Вместо chat_id передаем thread_id
+        thread_id=thread_id
     )
 
     try:
         db.add(new_campaign)
         db.commit()
         db.refresh(new_campaign)
-        logger.info(f"Кампания успешно создана: id={new_campaign.campaign_id}, name={campaign_name}")
+
+        if not new_campaign.campaign_id:
+            logger.error("❌ Ошибка: Кампания не была сохранена в БД.")
+            raise ValueError("Ошибка: Кампания не была создана в БД.")
+
+        logger.info(f"✅ Кампания успешно создана: id={new_campaign.campaign_id}, name={campaign_name}")
         return new_campaign
+
     except IntegrityError as e:
         db.rollback()
-        logger.error(f"Ошибка IntegrityError при создании кампании: {e}")
+        logger.error(f"❌ Ошибка IntegrityError при создании кампании: {e}")
         raise ValueError("Ошибка при создании кампании.")
     except SQLAlchemyError as e:
         db.rollback()
-        logger.error(f"Ошибка SQLAlchemyError при создании кампании: {e}", exc_info=True)
+        logger.error(f"❌ Ошибка SQLAlchemyError при создании кампании: {e}", exc_info=True)
         raise
 
 

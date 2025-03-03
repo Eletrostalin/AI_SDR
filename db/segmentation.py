@@ -17,3 +17,17 @@ FILTER_TYPES = {
     "revenue": ["dict", "int", "bool"],  # {">": 1000000}, 1000000 или True (любая выручка)
     "employee_count": ["dict", "int", "bool"],  # {">": 500}, 500 или True
 }
+
+EMAIL_SEGMENT_TRANSLATIONS = {
+            "name": "Название компании",
+            "region": "Регион",
+            "msp_registry": "Реестр МСП",
+            "director_name": "Имя директора",
+            "director_position": "Должность директора",
+            "phone_number": "Телефон",
+            "email": "Email",
+            "website": "Веб-сайт",
+            "primary_activity": "Основная деятельность",
+            "revenue": "Выручка",
+            "employee_count": "Количество сотрудников"
+        }

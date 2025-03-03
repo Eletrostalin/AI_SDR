@@ -9,7 +9,7 @@ def get_company_by_chat_id(db: Session, chat_id: str) -> Company:
     """
     Возвращает объект компании по chat_id.
     """
-    result = db.query(Company).filter_by(chat_id=chat_id).first()
+    result = db.query(Company).filter_by(chat_id=str(chat_id)).first()
     print(result)
     return result
 

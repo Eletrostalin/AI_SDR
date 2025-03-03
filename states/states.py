@@ -17,17 +17,13 @@ class AddCompanyState(StatesGroup):
     waiting_for_company_name = State()
 
 
-class CampaignCreationState(StatesGroup):
-    """Состояния для создания рекламной кампании"""
-    waiting_for_campaign_name = State()  # Ожидание названия кампании
-
-
 class AddCampaignState(StatesGroup):
     """Состояния для настройки кампании"""
+    waiting_for_campaign_name = State()  # Ожидание названия кампании
     waiting_for_filters = State()  # Ожидание ввода сегментации (фильтров)
     waiting_for_start_date = State()  # Ожидание ввода даты начала
     waiting_for_end_date = State()  # Ожидание ввода даты окончания
-    waiting_for_missing_data = State()  # Ожидание недостающих данных (если модель вернула неполный ответ)
+    waiting_for_missing_data = State()  # Ожидание недостающих данных
     waiting_for_confirmation = State()  # Ожидание подтверждения пользователем
 
 class AddContentPlanState(StatesGroup):

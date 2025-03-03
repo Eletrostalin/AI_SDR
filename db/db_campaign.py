@@ -1,4 +1,5 @@
 from datetime import datetime
+from aiogram import Bot
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from db.models import Campaigns, ChatThread
@@ -7,14 +8,16 @@ from db.db_company import get_company_by_chat_id
 from logger import logger
 
 
-def create_campaign_and_thread(
+async def create_campaign_and_thread(
+    bot: Bot,
     db: Session,
-    chat_id: str,
+    chat_id: int,
     campaign_name: str,
 ) -> Campaigns:
     """
-    Создаёт новую тему и кампанию в базе данных.
+    Создаёт новую тему (thread) в чате и кампанию в базе данных.
 
+    :param bot: Экземпляр бота для создания темы в Telegram.
     :param db: Сессия БД.
     :param chat_id: ID чата.
     :param campaign_name: Название кампании.
@@ -23,16 +26,26 @@ def create_campaign_and_thread(
     logger.debug(f"Создание темы и кампании: chat_id={chat_id}, campaign_name={campaign_name}")
 
     # Получаем компанию по chat_id
-    company = get_company_by_chat_id(db, chat_id)
+    company = get_company_by_chat_id(db, str(chat_id))  # chat_id приводим к строке, если нужно
     if not company:
         logger.error(f"Компания для chat_id={chat_id} не найдена.")
         raise ValueError("Ошибка: Компания не найдена.")
 
-    # Создаём тему чата
-    thread_id = save_thread_to_db(db, chat_id, thread_name=campaign_name).thread_id
-    if not thread_id:
-        logger.error("Ошибка создания темы чата.")
-        raise ValueError("Ошибка при создании темы чата.")
+    # Проверяем, существует ли уже тема в БД
+    thread = get_thread_by_chat_id(db, chat_id)
+    if thread:
+        thread_id = thread.thread_id
+        logger.debug(f"Используем существующую тему с thread_id={thread_id}")
+    else:
+        # Создаём новую тему в Telegram
+        try:
+            topic = await bot.create_forum_topic(chat_id=chat_id, name=campaign_name)
+            thread_id = topic.message_thread_id  # Telegram API возвращает ID темы
+            save_thread_to_db(db, chat_id, thread_id, thread_name=campaign_name)
+            logger.info(f"Создана новая тема: thread_id={thread_id}, chat_id={chat_id}")
+        except Exception as e:
+            logger.error(f"Ошибка при создании темы в Telegram: {e}", exc_info=True)
+            raise ValueError("Ошибка при создании темы чата в Telegram.")
 
     # Создаем кампанию
     new_campaign = Campaigns(
@@ -40,9 +53,8 @@ def create_campaign_and_thread(
         campaign_name=campaign_name,
         start_date=None,
         end_date=None,
-        params={},
         segments={},
-        chat_id=chat_id,  # Привязываем к chat_id
+        thread_id=thread_id  # <-- Вместо chat_id передаем thread_id
     )
 
     try:

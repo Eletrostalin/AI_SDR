@@ -18,10 +18,6 @@ from handlers.content_plan_handlers.content_plan_handlers import (
 )
 from handlers.campaign_handlers.campaign_handlers import (
     process_campaign_name,
-    process_start_date,
-    process_end_date,
-    confirm_campaign_creation,
-    process_campaign_data,
     process_filters
 )
 from handlers.email_table_handler import handle_file_upload, handle_email_choice_callback, handle_campaign_decision, \
@@ -129,16 +125,8 @@ async def handle_add_campaign_states(message: Message, state: FSMContext, curren
     """
     if current_state == AddCampaignState.waiting_for_campaign_name.state:
         await process_campaign_name(message, state)
-    elif current_state == AddCampaignState.waiting_for_campaign_data.state:
-        await process_campaign_data(message, state)
-    elif current_state == AddCampaignState.waiting_for_start_date.state:
-        await process_start_date(message, state)
-    elif current_state == AddCampaignState.waiting_for_end_date.state:
-        await process_end_date(message, state)
     elif current_state == AddCampaignState.waiting_for_filters.state:
         await process_filters(message, state)
-    elif current_state == AddCampaignState.waiting_for_confirmation.state:
-        await confirm_campaign_creation(message, state)
     else:
         # Обработка неизвестного состояния
         await message.reply("Неизвестное состояние. Начните процесс заново.")

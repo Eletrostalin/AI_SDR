@@ -10,16 +10,13 @@ from handlers.company_handlers.company_handlers import (
     process_edit_company_information,
     confirm_edit_company_information
 )
-from handlers.content_plan_handlers.content_plan_handlers import (
-    process_content_plan_description,
-    process_wave_count,
-    process_wave_details,
-    confirm_content_plan
-)
+
 from handlers.campaign_handlers.campaign_handlers import (
     process_campaign_name,
     process_filters
 )
+from handlers.content_plan_handlers.content_plan_handlers import process_restricted_topics, process_audience_style, \
+    process_send_date
 from handlers.email_table_handler import handle_file_upload, handle_email_choice_callback, handle_campaign_decision, \
     handle_first_question_decision, handle_second_question_decision
 from handlers.onboarding_handler import (
@@ -137,18 +134,12 @@ async def handle_add_content_plan_states(message: Message, state: FSMContext, cu
     """
     Обрабатывает состояния добавления контентного плана.
     """
-    if current_state == AddContentPlanState.waiting_for_description.state:
-        # Обработка ввода описания контентного плана
-        await process_content_plan_description(message, state)
-    elif current_state == AddContentPlanState.waiting_for_wave_count.state:
-        # Обработка ввода количества волн
-        await process_wave_count(message, state)
-    elif current_state == AddContentPlanState.waiting_for_wave_details.state:
-        # Обработка ввода данных для волн
-        await process_wave_details(message, state)
-    elif current_state == AddContentPlanState.waiting_for_confirmation.state:
-        # Обработка подтверждения контентного плана
-        await confirm_content_plan(message, state)
+    if current_state == AddContentPlanState.waiting_for_restricted_topics.state:
+        await process_restricted_topics(message, state)
+    elif current_state == AddContentPlanState.waiting_for_audience_style.state:
+        await process_audience_style(message, state)
+    elif current_state == AddContentPlanState.waiting_for_send_date.state:
+        await process_send_date(message, state)
 
 
 async def handle_template_states(message: Message, state: FSMContext, current_state: str):

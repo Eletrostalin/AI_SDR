@@ -84,7 +84,7 @@ def apply_filters_to_email_table(db: Session, email_table_id: int, filters: dict
     :return: DataFrame с отфильтрованными email-лидами.
     """
     try:
-        # 1️⃣ Получаем имя таблицы по ID
+        # Определяем название email-таблицы
         query_table = text("SELECT table_name FROM email_tables WHERE email_table_id = :email_table_id")
         result = db.execute(query_table, {"email_table_id": email_table_id}).fetchone()
 
@@ -95,7 +95,7 @@ def apply_filters_to_email_table(db: Session, email_table_id: int, filters: dict
         table_name = result[0]
         logger.info(f"📌 Используем email-таблицу: {table_name}")
 
-        # 2️⃣ Загружаем данные из таблицы
+        # Загружаем данные
         query_data = f"SELECT * FROM {table_name}"
         df = pd.read_sql(query_data, db.bind)
 
@@ -105,45 +105,45 @@ def apply_filters_to_email_table(db: Session, email_table_id: int, filters: dict
 
         logger.debug(f"🔍 Загружено {len(df)} записей из таблицы {table_name}")
         logger.debug(f"📋 Доступные колонки: {df.columns.tolist()}")
-        logger.debug(f"📊 Первые 5 строк:\n{df.head()}")
 
-        # 3️⃣ Применяем фильтры
-        logger.debug(f"🎯 Применяем фильтры: {filters}")
+        # Вывод уникальных значений для всех колонок, которые есть в фильтрах
+        for key in filters.keys():
+            if key in df.columns:
+                unique_values = df[key].dropna().unique()
+                logger.debug(f"📌 Уникальные значения в колонке '{key}': {unique_values}")
 
+        # Применяем фильтры
         for key, value in filters.items():
-            if key not in df.columns:
-                logger.warning(f"⚠️ Колонка '{key}' отсутствует в данных.")
-                continue
+            if key in df.columns:
+                # Приводим текстовые данные к единому формату
+                if df[key].dtype == "object":
+                    df[key] = df[key].astype(str).str.strip().str.lower()
 
-            before_count = len(df)
+                if isinstance(value, dict):  # Фильтрация по операторам >, <
+                    for op, val in value.items():
+                        if op == ">":
+                            df = df[df[key] > val]
+                        elif op == "<":
+                            df = df[df[key] < val]
 
-            # 🔹 Операторы сравнения (>, <)
-            if isinstance(value, dict):
-                for op, val in value.items():
-                    if op == ">" and pd.api.types.is_numeric_dtype(df[key]):
-                        df = df[df[key] > val]
-                    elif op == "<" and pd.api.types.is_numeric_dtype(df[key]):
-                        df = df[df[key] < val]
+
+                elif isinstance(value, list):  # Фильтр по списку значений
+
+                    normalized_values = [v.lower().strip() for v in value]
+
+                    df = df[df[key].str.contains("|".join(normalized_values), case=False, na=False)]
+
+                elif isinstance(value, bool):  # Фильтрация по наличию/отсутствию данных
+                    if value:
+                        df = df[df[key].notna() & (df[key] != "")]
                     else:
-                        logger.warning(f"⚠️ Некорректный оператор `{op}` для {key}: {val}")
+                        df = df[df[key].isna() | (df[key] == "")]
 
-            # 🔹 Фильтр по списку значений
-            elif isinstance(value, list):
-                df = df[df[key].astype(str).isin(map(str, value))]
+                else:  # Фильтрация по конкретному значению
+                    df = df[df[key] == value.strip().lower()]
 
-            # 🔹 Фильтр по наличию / отсутствию данных
-            elif isinstance(value, bool):
-                if value:  # True → Только строки, где есть данные
-                    df = df[df[key].notna() & (df[key].astype(str).str.strip() != "")]
-                else:  # False → Только строки, где данных нет
-                    df = df[df[key].isna() | (df[key].astype(str).str.strip() == "")]
-
-            # 🔹 Простая фильтрация (строка, число)
-            else:
-                df = df[df[key].astype(str) == str(value)]
-
-            after_count = len(df)
-            logger.debug(f"📌 Фильтр `{key}` → {value}: {before_count} → {after_count} записей")
+                # Логируем результат фильтрации
+                logger.debug(f"📌 Фильтр `{key}` → {value}: осталось {len(df)} записей")
 
         logger.info(f"✅ Итоговое количество записей после фильтрации: {len(df)}")
         return df
@@ -151,6 +151,7 @@ def apply_filters_to_email_table(db: Session, email_table_id: int, filters: dict
     except Exception as e:
         logger.error(f"❌ Ошибка при фильтрации email-таблицы: {e}", exc_info=True)
         return pd.DataFrame()
+
 
 def generate_excel_from_df(df: pd.DataFrame, company_id: int, campaign_id: int) -> str:
     """

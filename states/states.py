@@ -27,10 +27,12 @@ class AddCampaignState(StatesGroup):
     waiting_for_confirmation = State()  # Ожидание подтверждения пользователем
 
 class AddContentPlanState(StatesGroup):
-    waiting_for_description = State()
-    waiting_for_wave_count = State()
-    waiting_for_wave_details = State()
-    waiting_for_confirmation = State()
+    """
+    Состояния процесса создания контент-плана.
+    """
+    waiting_for_restricted_topics = State()  # Ожидание ввода запрещенных тем и слов
+    waiting_for_audience_style = State()  # Ожидание ввода аудитории и стиля общения
+    waiting_for_send_date = State()  # Ожидание даты отправки контент-плана
 
 class EmailUploadState(StatesGroup):
     waiting_for_file_upload = State()  # Ожидание загрузки файла

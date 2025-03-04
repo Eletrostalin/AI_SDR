@@ -19,7 +19,6 @@ class User(Base):
     # Связь с таблицей companies
     company = relationship("Company", back_populates="users")
 
-
 class ChatThread(Base):
     __tablename__ = "chat_threads"
 
@@ -28,7 +27,6 @@ class ChatThread(Base):
     thread_id = Column(BigInteger, nullable=False, index=True)
     thread_name = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
-
 
 class Company(Base):
     __tablename__ = "companies"
@@ -47,7 +45,6 @@ class Company(Base):
     content_plans = relationship("ContentPlan", back_populates="company")
     waves = relationship("Waves", back_populates="company")
     templates = relationship("Templates", back_populates="company")
-
 
 class CompanyInfo(Base):
     __tablename__ = "company_info"
@@ -80,7 +77,6 @@ class CompanyInfo(Base):
     # Связь с Company
     company = relationship("Company", back_populates="info")
 
-
 class Campaigns(Base):
     __tablename__ = "campaigns"
 
@@ -101,7 +97,6 @@ class Campaigns(Base):
     chat_thread = relationship("ChatThread", backref="campaigns")
     email_table = relationship("EmailTable", backref="campaigns")
 
-
 class EmailTable(Base):
     __tablename__ = "email_tables"
 
@@ -110,7 +105,6 @@ class EmailTable(Base):
     table_name = Column(String, nullable=False, unique=True)  # Уникальное имя таблицы для каждой компании
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
-
 
 class ContentPlan(Base):
     __tablename__ = "content_plans"
@@ -128,18 +122,15 @@ class ContentPlan(Base):
     company = relationship("Company", back_populates="content_plans")
     campaign = relationship("Campaigns", back_populates="content_plans")
 
-
 class Waves(Base):
     __tablename__ = "waves"
 
     wave_id = Column(Integer, primary_key=True, autoincrement=True)
     content_plan_id = Column(Integer, ForeignKey("content_plans.content_plan_id"), nullable=False)  # Связь с ContentPlan
-    campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"), nullable=True)  # Связь с Campaigns
+    campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"), nullable=False)  # Связь с Campaigns
     company_id = Column(Integer, ForeignKey("companies.company_id"), nullable=False)  # Связь с Company
-    send_time = Column(DateTime, nullable=False)  # Время отправки
     send_date = Column(DateTime, nullable=False)  # Дата отправки
-    subject = Column(String, nullable=False)  # Тема
-    template_id = Column(Integer, ForeignKey("templates.template_id"), nullable=True)  # ID шаблона
+    subject = Column(String, nullable=False)  # Тема рассылки
 
     # Связи
     content_plan = relationship("ContentPlan", back_populates="waves")

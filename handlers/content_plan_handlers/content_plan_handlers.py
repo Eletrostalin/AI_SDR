@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy.sql import text
 from datetime import datetime
 from db.db import SessionLocal
-from db.db_content_plan import create_content_plan
+from db.db_content_plan import create_content_plan, add_wave
 from states.states import AddContentPlanState
 from logger import logger
 from utils.utils import send_to_model  # Функция для отправки текста в модель
@@ -55,6 +55,7 @@ async def process_audience_style(message: Message, state: FSMContext):
     Обрабатывает ввод аудитории и стиля общения, отправляет в модель для анализа.
     """
     user_input = message.text.strip()
+    logger.debug(f"📩 Входные данные пользователя: {user_input}")
 
     # Промпт для модели
     prompt = f"""
@@ -75,33 +76,40 @@ async def process_audience_style(message: Message, state: FSMContext):
 
     **Входной текст пользователя:** "{user_input}"
 
-    **Ответ в JSON-формате:**
+    **Ответ верни строго в JSON-формате:**
     {{
         "audience": "<аудитория>",
         "style": "<стиль общения>"
     }}
     """
 
+    logger.debug(f"📡 Отправляем запрос в модель с prompt: {prompt}")
+
     response = send_to_model(prompt)
 
     try:
+        # Логирование ответа перед обработкой
+        logger.debug(f"📬 Ответ модели: {response}")
+
         model_data = json.loads(response)
         audience = model_data.get("audience", "").strip()
         style = model_data.get("style", "").strip()
 
         if not audience or not style:
+            logger.warning("⚠️ Модель вернула пустые значения. Повторный ввод.")
             await message.reply("⚠️ Не удалось определить аудиторию и стиль. Попробуйте ещё раз.")
             return
 
         logger.info(f"✅ Определено моделью: Аудитория - {audience}, Стиль - {style}")
+
         await state.update_data(audience=audience, style=style)
         await state.update_data(wave_count=1)  # Всегда 1 волна
 
         await message.answer("📅 Укажите дату отправки контент-плана (в формате ДД.ММ.ГГГГ):")
         await state.set_state(AddContentPlanState.waiting_for_send_date)
 
-    except json.JSONDecodeError:
-        logger.error("❌ Ошибка обработки данных от модели", exc_info=True)
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Ошибка обработки данных от модели: {e}", exc_info=True)
         await message.reply("❌ Произошла ошибка при анализе ответа. Попробуйте ещё раз.")
 
 
@@ -114,50 +122,62 @@ async def process_send_date(message: Message, state: FSMContext):
 
     try:
         send_date = datetime.strptime(user_input, "%d.%m.%Y").date()
-        await state.update_data(send_date=str(send_date))
+        await state.update_data(send_date=send_date.isoformat())  # Сохраняем дату в ISO-формате
     except ValueError:
         await message.reply("⚠️ Некорректный формат даты. Введите в формате ДД.ММ.ГГГГ.")
         return
 
     # Получаем данные из состояния
     state_data = await state.get_data()
-    company_id = state_data.get("company_id")
-    campaign_id = state_data.get("campaign_id")
+    campaign_data = state_data.get("campaign_data", {})
+    company_id = campaign_data.get("company_id")  # Исправлено
+    campaign_id = campaign_data.get("campaign_id")  # Кампания теперь точно извлекается
     telegram_id = message.from_user.id
     restricted_topics = state_data.get("restricted_topics", "")
     audience = state_data.get("audience", "")
     style = state_data.get("style", "")
     wave_count = state_data.get("wave_count", 1)
+    send_date = state_data.get("send_date")
 
     if not company_id or not campaign_id:
+        logger.error(f"❌ Ошибка: company_id или campaign_id отсутствует. Данные: {state_data}")
         await message.reply("❌ Ошибка: Кампания не найдена.")
         return
 
-    # Сохраняем описание в JSON-формате
-    description = json.dumps({
+    # Описание контент-плана в JSON-формате
+    description = {
         "audience": audience,
         "style": style,
         "restricted_topics": restricted_topics,
         "send_date": send_date
-    }, ensure_ascii=False)
+    }
 
-    # Сохраняем контент-план в БД
     try:
         with SessionLocal() as db:
-            db.execute(
-                text("""
-                    INSERT INTO content_plans (company_id, telegram_id, created_at, wave_count, description, campaign_id)
-                    VALUES (:company_id, :telegram_id, NOW(), :wave_count, :description, :campaign_id)
-                """),
-                {
-                    "company_id": company_id,
-                    "telegram_id": telegram_id,
-                    "wave_count": wave_count,
-                    "description": description,
-                    "campaign_id": campaign_id
-                }
+            # ✅ Создание контент-плана
+            content_plan = create_content_plan(
+                db=db,
+                company_id=company_id,  # Теперь передается корректно
+                chat_id=telegram_id,
+                description=description,
+                wave_count=wave_count
             )
-            db.commit()
+
+            if not content_plan:
+                raise Exception("Не удалось создать контент-план.")
+
+            # ✅ Добавление волны
+            wave = add_wave(
+                db=db,
+                content_plan_id=content_plan.content_plan_id,
+                company_id=company_id,
+                campaign_id=campaign_id,
+                send_date=send_date,
+                subject="Первая волна"
+            )
+
+            if not wave:
+                raise Exception("Не удалось создать волну.")
 
         await message.answer("✅ Контент-план успешно создан.")
         await state.clear()

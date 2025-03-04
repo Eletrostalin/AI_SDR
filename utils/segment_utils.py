@@ -1,10 +1,11 @@
 import json
+
 from sqlalchemy.sql import text
 import os
 from sqlalchemy.orm import Session
 import pandas as pd
 
-from db.segmentation import FILTER_TYPES, EMAIL_SEGMENT_COLUMNS
+from db.segmentation import EMAIL_SEGMENT_COLUMNS
 from utils.utils import send_to_model, logger  # Функция отправки в модель
 
 
@@ -119,28 +120,23 @@ def apply_filters_to_email_table(db: Session, email_table_id: int, filters: dict
                 if df[key].dtype == "object":
                     df[key] = df[key].astype(str).str.strip().str.lower()
 
-                if isinstance(value, dict):  # Фильтрация по операторам >, <
+                # 🔹 **Обрабатываем `true` и `false` как наличие/отсутствие значений**
+                if isinstance(value, str) and value.lower() == "true":
+                    df = df[df[key].notna() & (df[key] != "")]
+                elif isinstance(value, str) and value.lower() == "false":
+                    df = df[df[key].isna() | (df[key] == "")]
+                elif isinstance(value, dict):  # Фильтрация по операторам >, <
                     for op, val in value.items():
                         if op == ">":
                             df = df[df[key] > val]
                         elif op == "<":
                             df = df[df[key] < val]
-
-
                 elif isinstance(value, list):  # Фильтр по списку значений
-
                     normalized_values = [v.lower().strip() for v in value]
-
                     df = df[df[key].str.contains("|".join(normalized_values), case=False, na=False)]
-
-                elif isinstance(value, bool):  # Фильтрация по наличию/отсутствию данных
-                    if value:
-                        df = df[df[key].notna() & (df[key] != "")]
-                    else:
-                        df = df[df[key].isna() | (df[key] == "")]
-
-                else:  # Фильтрация по конкретному значению
-                    df = df[df[key] == value.strip().lower()]
+                elif isinstance(value, str):  # Фильтрация по конкретному значению (ищем вхождение)
+                    normalized_value = value.strip().lower()
+                    df = df[df[key].str.contains(normalized_value, case=False, na=False)]
 
                 # Логируем результат фильтрации
                 logger.debug(f"📌 Фильтр `{key}` → {value}: осталось {len(df)} записей")

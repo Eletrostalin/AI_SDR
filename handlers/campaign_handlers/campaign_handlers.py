@@ -126,47 +126,10 @@ async def process_filters(message: Message, state: FSMContext):
         await state.update_data(campaign_data=campaign_data)
 
         await message.reply("Рекламная кампания настроена. Перейдем к созданию контент-плана. Для этого ответьте на несколько вопросов")
-        await handle_add_content_plan
+        await handle_add_content_plan(message, state)
 
     except Exception as e:
         logger.error(f"Ошибка обработки фильтров через модель: {e}", exc_info=True)
         await message.reply("❌ Произошла ошибка при обработке фильтров. Попробуйте ещё раз.")
 
-
-def validate_model_response(response: dict, state_data: dict) -> dict:
-    """
-    Проверяет и нормализует ответ модели, добавляя имя кампании из состояния.
-
-    :param response: Ответ модели (предполагается словарь).
-    :param state_data: Данные состояния FSM.
-    :return: Словарь с проверенными данными.
-    """
-    try:
-        campaign_data = {
-            "campaign_name": state_data.get("campaign_name") or response.get("campaign_name", "").strip() or None,
-            "start_date": response.get("start_date", "").strip(),
-            "end_date": response.get("end_date", "").strip(),
-            "filters": response.get("filters", {}),
-            "params": response.get("params", {}),
-        }
-
-        from datetime import datetime
-        if campaign_data["start_date"]:
-            campaign_data["start_date"] = datetime.strptime(
-                campaign_data["start_date"], "%d.%m.%Y"
-            ).strftime("%d.%m.%Y")
-        if campaign_data["end_date"]:
-            campaign_data["end_date"] = datetime.strptime(
-                campaign_data["end_date"], "%d.%m.%Y"
-            ).strftime("%d.%m.%Y")
-
-        if not isinstance(campaign_data["filters"], dict):
-            campaign_data["filters"] = {}
-        if not isinstance(campaign_data["params"], dict):
-            campaign_data["params"] = {}
-
-        return campaign_data
-    except (ValueError, KeyError, TypeError) as e:
-        logger.error(f"Ошибка валидации ответа модели: {e}", exc_info=True)
-        return {}
 

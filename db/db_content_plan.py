@@ -1,5 +1,7 @@
+import json
+
 from sqlalchemy.orm import Session
-from datetime import datetime, date
+from datetime import datetime
 
 from db.db import SessionLocal
 from db.models import Campaigns, ChatThread, ContentPlan, Waves
@@ -7,129 +9,112 @@ from logger import logger
 from sqlalchemy.exc import SQLAlchemyError
 
 
-def get_chat_thread(db: Session, chat_id: int, thread_id: int) -> ChatThread:
-    """
-    Возвращает тему чата по chat_id и thread_id.
-    """
-    try:
-        logger.debug(f"Получение темы чата: chat_id={chat_id}, thread_id={thread_id}")
-        chat_thread = db.query(ChatThread).filter_by(chat_id=chat_id, thread_id=thread_id).first()
-        if not chat_thread:
-            logger.error(f"Тема с chat_id={chat_id} и thread_id={thread_id} не найдена.")
-        return chat_thread
-    except SQLAlchemyError as e:
-        logger.error(f"Ошибка при получении темы чата: {e}", exc_info=True)
-        return None
-
-
-def get_campaign_by_thread_id(db: Session, thread_id: int) -> Campaigns:
+def get_campaign_by_thread_id(db: Session, thread_id: int) -> Campaigns | None:
     """
     Возвращает кампанию по thread_id.
     """
     try:
         logger.debug(f"Получение кампании по thread_id={thread_id}")
-        campaign = db.query(Campaigns).filter_by(thread_id=thread_id).first()
-        if not campaign:
-            logger.error(f"Кампания с thread_id={thread_id} не найдена.")
-        return campaign
+        return db.query(Campaigns).filter_by(thread_id=thread_id).first()
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при получении кампании: {e}", exc_info=True)
         return None
 
 
-def create_content_plan(db: Session, company_id: int, chat_id: int, description: str, wave_count: int,
-                        campaign_id: int) -> ContentPlan:
+def create_content_plan(
+        db: Session,
+        company_id: int,
+        chat_id: int,
+        description: dict,
+        wave_count: int
+) -> ContentPlan | None:
     """
-    Создает запись контентного плана.
+    Создает контент-план. Автоматически подтягивает последнюю активную кампанию по компании.
     """
     try:
-        logger.debug(f"Создание контентного плана для компании {company_id} и кампании {campaign_id}")
+        logger.debug(f"🔍 Поиск активной кампании для компании {company_id}")
+
+        # Находим последнюю активную кампанию через ORM
+        campaign = db.query(Campaigns)\
+            .filter_by(company_id=company_id, status="active")\
+            .order_by(Campaigns.created_at.desc())\
+            .first()
+
+        if not campaign:
+            logger.error(f"❌ Не найдено активных кампаний для компании {company_id}")
+            return None
+
+        campaign_id = campaign.campaign_id
+        logger.info(f"📌 Используем campaign_id={campaign_id} для создания контент-плана.")
+
+        # Логирование входных данных
+        logger.debug(f"📋 Входные данные для контент-плана: chat_id={chat_id}, wave_count={wave_count}")
+        logger.debug(f"📋 Описание контент-плана: {description}")
+
+        # Преобразуем описание в JSON-строку
+        description_json = json.dumps(description, ensure_ascii=False)
+
         content_plan = ContentPlan(
             company_id=company_id,
             telegram_id=str(chat_id),
-            description=description,
+            description=description_json,
             wave_count=wave_count,
             campaign_id=campaign_id
         )
         db.add(content_plan)
         db.commit()
         db.refresh(content_plan)
-        logger.info(f"Контентный план создан: id={content_plan.content_plan_id}, description={description}")
+
+        logger.info(f"✅ Контентный план создан: id={content_plan.content_plan_id}")
         return content_plan
     except SQLAlchemyError as e:
-        logger.error(f"Ошибка при создании контентного плана: {e}", exc_info=True)
+        logger.error(f"❌ Ошибка при создании контентного плана: {e}", exc_info=True)
         db.rollback()
         return None
 
 
-def parse_date_time(send_date: str, send_time) -> datetime:
+def add_wave(
+        db: Session,
+        content_plan_id: int,
+        company_id: int,
+        campaign_id: int,
+        send_date: str,
+        subject: str
+) -> Waves | None:
     """
-    Преобразует дату и время в объект datetime.
-
-    :param send_date: Строка с датой в формате "%Y-%m-%d".
-    :param send_time: Строка с временем в формате "%H:%M:%S" или объект datetime.time/datetime.datetime.
-    :return: Объект datetime.
-    """
-    try:
-        # Обработка даты
-        parsed_date = datetime.strptime(send_date, "%Y-%m-%d").date() if isinstance(send_date, str) else send_date
-
-        # Обработка времени
-        if isinstance(send_time, str):
-            parsed_time = datetime.strptime(send_time, "%H:%M:%S").time()
-        elif isinstance(send_time, datetime):
-            parsed_time = send_time.time()
-        elif isinstance(send_time, date):
-            raise ValueError("send_time не может быть объектом date, ожидается time или datetime")
-        else:
-            parsed_time = send_time  # Предполагается, что это объект datetime.time
-
-        return datetime.combine(parsed_date, parsed_time)
-    except ValueError as e:
-        logger.error(f"Ошибка преобразования даты и времени: {e}", exc_info=True)
-        raise
-
-
-def add_wave(db: Session, content_plan_id: int, company_id: int, campaign_id: int, wave: dict) -> Waves:
-    """
-    Добавляет волну к контентному плану.
+    Добавляет волну в контентный план.
     """
     try:
-        logger.debug(f"Добавление волны: content_plan_id={content_plan_id}, wave={wave}")
+        logger.debug(f"🔍 Добавление волны: content_plan_id={content_plan_id}, campaign_id={campaign_id}")
+        logger.debug(f"📅 Дата отправки: {send_date}, 📢 Тема: {subject}")
 
-        # Проверка наличия ключей
-        if "send_time" not in wave or "send_date" not in wave or "subject" not in wave:
-            raise ValueError("В wave отсутствуют необходимые ключи: 'send_time', 'send_date', 'subject'")
-
-        # Преобразование даты и времени
-        send_time = parse_date_time(wave["send_date"], wave["send_time"])
-        subject = wave["subject"]
+        # Преобразуем дату в объект datetime
+        send_date_parsed = datetime.strptime(send_date, "%Y-%m-%d").date()
 
         if not subject.strip():
             raise ValueError("Поле 'subject' не может быть пустым.")
 
-        # Создание новой волны
         new_wave = Waves(
             content_plan_id=content_plan_id,
             company_id=company_id,
             campaign_id=campaign_id,
-            send_time=send_time,
-            send_date=send_time.date(),
+            send_date=send_date_parsed,
             subject=subject,
         )
         db.add(new_wave)
-        db.flush()  # Применить изменения для получения ID волны
-        logger.info(f"Волна добавлена: id={new_wave.wave_id}, subject={subject}")
+        db.commit()
+        db.refresh(new_wave)
+
+        logger.info(f"✅ Волна добавлена: id={new_wave.wave_id}, subject={subject}")
         return new_wave
     except (SQLAlchemyError, ValueError) as e:
-        logger.error(f"Ошибка при добавлении волны: {e}", exc_info=True)
+        logger.error(f"❌ Ошибка при добавлении волны: {e}", exc_info=True)
         db.rollback()
         return None
 
-
 def get_content_plans_by_campaign_id(db: Session, campaign_id: int):
     """
-    Возвращает список контентных планов для заданной кампании.
+    Получает список контентных планов для заданной кампании.
 
     :param db: Сессия базы данных SQLAlchemy.
     :param campaign_id: ID кампании.
@@ -145,10 +130,5 @@ def get_content_plans_by_campaign_id(db: Session, campaign_id: int):
         logger.error(f"Ошибка при получении контентных планов для campaign_id={campaign_id}: {e}", exc_info=True)
         return []
 
-def get_wave_by_id(wave_id: int) -> Waves | None:
-    """Получает объект волны по ID"""
-    db = SessionLocal()
-    try:
-        return db.query(Waves).filter_by(wave_id=wave_id).first()
-    finally:
-        db.close()
+
+

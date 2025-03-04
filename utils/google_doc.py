@@ -1,33 +1,31 @@
+
 import os
+from datetime import datetime
 
 import pandas as pd
 from openpyxl.workbook import Workbook
 from logger import logger
 
 
-
-def create_excel_table(data, file_name=None):
+def create_excel_table(data: list, file_name: str = "content_plans.xlsx") -> str:
     """
-    Создает Excel-файл с таблицей данных.
+    Создает Excel-файл с переданными данными.
 
-    :param data: Двумерный список с данными для таблицы.
-    :param file_name: Имя файла для сохранения (по умолчанию генерируется автоматически).
+    :param data: Двумерный список данных для таблицы.
+    :param file_name: Имя создаваемого файла.
     :return: Путь к созданному файлу.
     """
-    if file_name is None:
-        file_name = "campaigns.xlsx"  # Значение по умолчанию
+    # Создаем DataFrame из списка данных
+    df = pd.DataFrame(data[1:], columns=data[0])  # Первая строка — заголовки
 
-    # Создаем новую книгу и активный лист
-    wb = Workbook()
-    ws = wb.active
+    # Генерируем путь к файлу
+    directory = "generated_reports"
+    os.makedirs(directory, exist_ok=True)
+    file_path = os.path.join(directory, f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file_name}")
 
-    # Заполняем таблицу данными
-    for row in data:
-        ws.append(row)
+    # Сохраняем в Excel
+    df.to_excel(file_path, index=False)
 
-    # Сохраняем файл
-    file_path = os.path.join(os.getcwd(), file_name)
-    wb.save(file_path)
     return file_path
 
 

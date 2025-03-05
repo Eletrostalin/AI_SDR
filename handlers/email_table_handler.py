@@ -98,12 +98,19 @@ async def handle_file_upload(message: Message, state: FSMContext):
     """
     Обработчик загрузки таблицы с email-сегментацией.
     """
+
+
     logger.debug(f"📂 Получено сообщение. Текущее состояние: {await state.get_state()}")
 
     if not message.document:
         logger.warning("⚠️ Пользователь отправил сообщение без файла.")
         await message.reply("❌ Пожалуйста, отправьте файл в формате Excel (.xlsx, .xls).")
         return
+
+    file_name = message.document.file_name  # Получаем имя файла
+
+    # Сохраняем в FSMContext
+    await state.update_data(file_name=file_name)
 
     document = message.document
     file_path = os.path.join("uploads", document.file_name)

@@ -7,9 +7,10 @@ from sqlalchemy.sql import text
 from datetime import datetime
 from db.db import SessionLocal
 from db.db_content_plan import create_content_plan, add_wave
+from handlers.template_handlers.template_handler import add_template
 from states.states import AddContentPlanState
 from logger import logger
-from utils.utils import send_to_model  # Функция для отправки текста в модель
+from utils.utils import send_to_model  # Функция для отправки текста в модель # Импортируем первую функцию модуля шаблонов
 
 router = Router()
 
@@ -34,16 +35,16 @@ async def process_restricted_topics(message: Message, state: FSMContext):
     await message.answer("Опишите аудиторию и стиль общения для контент-плана.\n\n"
                          "Вы можете использовать текст или выбрать из вариантов:\n\n"
                          "**Аудитория:**\n"
-                         "1️⃣ Холодные лиды\n"
-                         "2️⃣ Тёплые лиды\n"
-                         "3️⃣ Клиенты\n"
-                         "4️⃣ Смешанная\n\n"
+                         "1. Холодные лиды\n"
+                         "2. Тёплые лиды\n"
+                         "3. Клиенты\n"
+                         "4. Смешанная\n\n"
                          "**Стиль общения:**\n"
-                         "1️⃣ Официально-деловой\n"
-                         "2️⃣ Дружелюбно-профессиональный\n"
-                         "3️⃣ Эмоционально-убедительный\n"
-                         "4️⃣ Экспертно-консультативный\n"
-                         "5️⃣ Минималистичный\n\n"
+                         "1. Официально-деловой\n"
+                         "2. Дружелюбно-профессиональный\n"
+                         "3. Эмоционально-убедительный\n"
+                         "4. Экспертно-консультативный\n"
+                         "5. Минималистичный\n\n"
                          "Введите цифры (например, '2 4') или текст.")
 
     await state.set_state(AddContentPlanState.waiting_for_audience_style)
@@ -55,9 +56,8 @@ async def process_audience_style(message: Message, state: FSMContext):
     Обрабатывает ввод аудитории и стиля общения, отправляет в модель для анализа.
     """
     user_input = message.text.strip()
-    logger.debug(f"📩 Входные данные пользователя: {user_input}")
+    logger.debug(f"Входные данные пользователя: {user_input}")
 
-    # Промпт для модели
     prompt = f"""
     Ты — эксперт по маркетинговым коммуникациям. Определи параметры контент-плана на основе текста пользователя.
 
@@ -83,40 +83,40 @@ async def process_audience_style(message: Message, state: FSMContext):
     }}
     """
 
-    logger.debug(f"📡 Отправляем запрос в модель с prompt: {prompt}")
+    logger.debug(f"Отправляем запрос в модель с prompt: {prompt}")
 
     response = send_to_model(prompt)
 
     try:
-        # Логирование ответа перед обработкой
-        logger.debug(f"📬 Ответ модели: {response}")
+        logger.debug(f"Ответ модели: {response}")
 
         model_data = json.loads(response)
         audience = model_data.get("audience", "").strip()
         style = model_data.get("style", "").strip()
 
         if not audience or not style:
-            logger.warning("⚠️ Модель вернула пустые значения. Повторный ввод.")
-            await message.reply("⚠️ Не удалось определить аудиторию и стиль. Попробуйте ещё раз.")
+            logger.warning("Модель вернула пустые значения. Повторный ввод.")
+            await message.reply("Не удалось определить аудиторию и стиль. Попробуйте ещё раз.")
             return
 
-        logger.info(f"✅ Определено моделью: Аудитория - {audience}, Стиль - {style}")
+        logger.info(f"Определено моделью: Аудитория - {audience}, Стиль - {style}")
 
         await state.update_data(audience=audience, style=style)
         await state.update_data(wave_count=1)  # Всегда 1 волна
 
-        await message.answer("📅 Укажите дату отправки контент-плана (в формате ДД.ММ.ГГГГ):")
+        await message.answer("Укажите дату отправки контент-плана (в формате ДД.ММ.ГГГГ):")
         await state.set_state(AddContentPlanState.waiting_for_send_date)
 
     except json.JSONDecodeError as e:
-        logger.error(f"❌ Ошибка обработки данных от модели: {e}", exc_info=True)
-        await message.reply("❌ Произошла ошибка при анализе ответа. Попробуйте ещё раз.")
+        logger.error(f"Ошибка обработки данных от модели: {e}", exc_info=True)
+        await message.reply("Произошла ошибка при анализе ответа. Попробуйте ещё раз.")
 
 
 @router.message(StateFilter(AddContentPlanState.waiting_for_send_date))
 async def process_send_date(message: Message, state: FSMContext):
     """
     Обрабатывает ввод даты отправки контент-плана и сохраняет его в БД.
+    После успешного создания контент-плана запускает процесс генерации шаблона.
     """
     user_input = message.text.strip()
 
@@ -130,8 +130,8 @@ async def process_send_date(message: Message, state: FSMContext):
     # Получаем данные из состояния
     state_data = await state.get_data()
     campaign_data = state_data.get("campaign_data", {})
-    company_id = campaign_data.get("company_id")  # Исправлено
-    campaign_id = campaign_data.get("campaign_id")  # Кампания теперь точно извлекается
+    company_id = campaign_data.get("company_id")
+    campaign_id = campaign_data.get("campaign_id")
     telegram_id = message.from_user.id
     restricted_topics = state_data.get("restricted_topics", "")
     audience = state_data.get("audience", "")
@@ -157,7 +157,7 @@ async def process_send_date(message: Message, state: FSMContext):
             # ✅ Создание контент-плана
             content_plan = create_content_plan(
                 db=db,
-                company_id=company_id,  # Теперь передается корректно
+                company_id=company_id,
                 chat_id=telegram_id,
                 description=description,
                 wave_count=wave_count
@@ -180,8 +180,17 @@ async def process_send_date(message: Message, state: FSMContext):
                 raise Exception("Не удалось создать волну.")
 
         await message.answer("✅ Контент-план успешно создан.")
-        await state.clear()
+
+        # **Автоматически вызываем add_template**
+        logger.info(f"📌 Запуск генерации шаблона для campaign_id={campaign_id}")
+        await add_template(
+            message=message,
+            state=state
+        )
 
     except Exception as e:
         logger.error(f"Ошибка при сохранении контент-плана: {e}", exc_info=True)
         await message.reply("❌ Произошла ошибка при сохранении контент-плана. Попробуйте позже.")
+
+    finally:
+        await state.clear()  # Очистка состояния после создания контент-плана

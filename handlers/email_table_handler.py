@@ -122,6 +122,16 @@ async def handle_file_upload(message: Message, state: FSMContext):
         await bot.download(document.file_id, destination=file_path)
         logger.info(f"📂 Файл {document.file_name} успешно сохранён в {file_path}.")
 
+        # 🔹 **Сохраняем `file_name` в состояние FSM**
+        await state.update_data(file_name=document.file_name)
+
+        # 🔹 Проверяем, сохранился ли file_name корректно
+        state_data = await state.get_data()
+        if not state_data.get("file_name"):
+            logger.error("❌ Ошибка: file_name не был сохранён в FSMContext!")
+        else:
+            logger.debug(f"✅ file_name сохранён: {state_data.get('file_name')}")
+
         # Получаем данные из state
         state_data = await state.get_data()
         segment_table_name = state_data.get("segment_table_name")
@@ -187,7 +197,15 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
             return False
 
         df.rename(columns=mapping, inplace=True)
-        logger.info(f"✅ Колонки после маппинга: {df.columns.tolist()}")
+        state_data = await state.get_data()
+        file_name = state_data.get("file_name")
+
+        if not file_name:
+            await message.reply("❌ Ошибка: не удалось определить имя файла.")
+            return False
+
+        df["file_name"] = file_name  # ✅ Принудительно добавляем колонку с именем файла
+        logger.debug(f"📌 Добавлен file_name в DataFrame: {file_name}")
 
         df, valid_emails, multi_email_rows, problematic_rows, problematic_values = clean_and_validate_emails(df)
 
@@ -202,7 +220,6 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
             await state.update_data(
                 processing_df=df,
                 email_column=valid_emails,
-                segment_table_name=segment_table_name,
                 problematic_rows=problematic_rows,
                 problematic_values=problematic_values
             )
@@ -222,7 +239,7 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
 
             return False  # ⚠️ Важно: Это уже обработано, поэтому `handle_file_upload` НЕ должен отправлять сообщение!
 
-        await save_cleaned_data(df, segment_table_name, message)
+        await save_cleaned_data(df, segment_table_name, message, state)
         return True
 
     except Exception as e:
@@ -252,7 +269,7 @@ async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
 
         await call.message.edit_text("✅ Записи разделены! Теперь каждая строка содержит только **один** email.")
 
-        await save_cleaned_data(df, segment_table_name, call.message)
+        await save_cleaned_data(df, segment_table_name, call.message, state)
         await ask_about_more_files(call.message, state)
 
     elif choice == "upload_new_file":

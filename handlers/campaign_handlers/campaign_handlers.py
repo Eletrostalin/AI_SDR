@@ -32,7 +32,8 @@ async def handle_add_campaign(message: Message, state: FSMContext):
 @router.message(StateFilter(AddCampaignState.waiting_for_campaign_name))
 async def process_campaign_name(message: Message, state: FSMContext):
     """
-    Обрабатывает введенное название кампании, создаёт запись в БД и тему чата.
+    Обрабатывает введенное название кампании, собирает данные и передаёт их в create_campaign_and_thread.
+    Фильтры добавляются позже.
     """
     campaign_name = message.text.strip()
 
@@ -45,23 +46,41 @@ async def process_campaign_name(message: Message, state: FSMContext):
 
     try:
         with SessionLocal() as db:
-            new_campaign = await create_campaign_and_thread(bot, db, chat_id, campaign_name)
+            # ✅ Получаем компанию по chat_id
+            company = db.execute(
+                text("SELECT company_id FROM companies WHERE chat_id = :chat_id"),
+                {"chat_id": str(chat_id)}
+            ).fetchone()
+            if not company:
+                await message.answer("❌ Ошибка: Компания не найдена.")
+                return
 
+            company_id = company[0]
+
+            # ✅ Получаем email_table_id
             email_table = db.execute(
                 text("SELECT email_table_id FROM email_tables WHERE company_id = :company_id"),
-                {"company_id": new_campaign.company_id}
+                {"company_id": company_id}
             ).fetchone()
-
             email_table_id = email_table[0] if email_table else None
 
-        campaign_data = {
-            "campaign_id": new_campaign.campaign_id,
-            "campaign_name": campaign_name,
-            "company_id": new_campaign.company_id,
-            "email_table_id": email_table_id
-        }
+            # ✅ Формируем данные для создания кампании
+            campaign_data = {
+                "campaign_name": campaign_name,
+                "company_id": company_id,
+                "email_table_id": email_table_id,
+                "status": "active",
+                "status_for_user": True
+            }
+
+            # ✅ Создаём кампанию и тему чата
+            new_campaign = await create_campaign_and_thread(bot, db, chat_id, campaign_data)
+
+        # ✅ Обновляем state (без фильтров)
+        campaign_data["campaign_id"] = new_campaign.campaign_id
         await state.update_data(campaign_data=campaign_data)
 
+        # ✅ Запрашиваем у пользователя фильтры
         segment_columns = ", ".join(
             EMAIL_SEGMENT_TRANSLATIONS.get(col, col) for col in EMAIL_SEGMENT_COLUMNS
         )
@@ -78,6 +97,7 @@ async def process_campaign_name(message: Message, state: FSMContext):
                  f"\nРегион - Москва\nИмя директора - Сергей\n"
         )
 
+        # ✅ Устанавливаем состояние ожидания фильтров
         await state.set_state(AddCampaignState.waiting_for_filters)
 
     except ValueError as e:

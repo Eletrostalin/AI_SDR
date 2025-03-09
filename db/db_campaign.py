@@ -111,3 +111,28 @@ def get_campaign_by_thread_id(db: Session, thread_id: int) -> Campaigns | None:
     :return: Найденная кампания или None, если не найдена.
     """
     return db.query(Campaigns).filter_by(thread_id=thread_id).first()
+
+
+def update_campaign_filters(db: Session, campaign_id: int, filters: dict):
+    """
+    Обновляет фильтры в существующей кампании.
+
+    :param db: Сессия базы данных.
+    :param campaign_id: ID кампании.
+    :param filters: Фильтры для обновления.
+    """
+    try:
+        campaign = db.query(Campaigns).filter_by(campaign_id=campaign_id).first()
+        if not campaign:
+            logger.error(f"❌ Кампания с ID {campaign_id} не найдена.")
+            return False
+
+        campaign.filters = filters
+        db.commit()
+        logger.info(f"✅ Фильтры успешно добавлены в кампанию ID {campaign_id}")
+        return True
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Ошибка при обновлении фильтров кампании ID {campaign_id}: {e}", exc_info=True)
+        return False

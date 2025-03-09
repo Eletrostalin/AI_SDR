@@ -89,7 +89,6 @@ class Campaigns(Base):
     status_for_user = Column(Boolean, default=True, nullable=False)
     filters = Column(JSON, nullable=True)
     email_table_id = Column(Integer, ForeignKey("email_tables.email_table_id"), nullable=True)  # Добавляем email_table_id
-    filters = Column(JSONB, nullable=True)  # Фильтры для кампании
 
     # Связи
     templates = relationship("Templates", back_populates="campaign")

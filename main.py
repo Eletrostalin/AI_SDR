@@ -2,6 +2,8 @@ import asyncio
 from aiogram import Dispatcher
 from aiogram.filters import Command
 from aiogram.fsm.storage.memory import MemoryStorage
+
+from bot import bot
 from logger import logger
 from handlers.campaign_handlers.campaign_delete_handler import (
     handle_delete_campaign_request,
@@ -14,9 +16,8 @@ from handlers.company_handlers.company_handlers import router as company_router
 from handlers.onboarding_handler import router as onboarding_router
 from handlers.template_handlers.template_handler import router as template_router
 from handlers.campaign_handlers.campaign_handlers import router as campaign_router
-from handlers.draft_handlers.draft_handler import router as draft_router
-from bot import bot
 from config import TARGET_CHAT_ID
+from utils.wave_shedulers import start_scheduler
 
 
 async def main():
@@ -35,6 +36,9 @@ async def main():
     logger.info("Маршрутизаторы настроены.")
     logger.info(f"Целевой ID чата: {TARGET_CHAT_ID}")
 
+    # 🔹 Запускаем планировщик волн
+    #start_scheduler()
+
     # Запуск поллинга
     await dp.start_polling(bot)
     logger.info("Бот начал опрос сообщений.")
@@ -50,7 +54,6 @@ def setup_routers(dp: Dispatcher):
     dp.include_router(company_router)
     dp.include_router(campaign_router)
     dp.include_router(template_router)
-    dp.include_router(draft_router)
     dp.include_router(email_router)
 
     # Регистрация маршрутизатора для онбординга

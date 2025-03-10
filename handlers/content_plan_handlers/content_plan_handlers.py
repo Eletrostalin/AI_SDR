@@ -7,6 +7,7 @@ from sqlalchemy.sql import text
 from datetime import datetime
 from db.db import SessionLocal
 from db.db_content_plan import create_content_plan, add_wave
+from db.models import User, Campaigns, Company, ChatThread
 from handlers.template_handlers.template_handler import add_template
 from states.states import AddContentPlanState
 from logger import logger
@@ -20,8 +21,47 @@ async def handle_add_content_plan(message: Message, state: FSMContext):
     """
     Запрашивает у пользователя запрещенные темы и слова для контент-плана.
     """
-    await message.answer("Давайте создадим контент-план. Укажите запрещенные темы и слова.")
-    await state.set_state(AddContentPlanState.waiting_for_restricted_topics)
+    db = SessionLocal()
+    try:
+        chat_id = message.chat.id
+        thread_id = message.message_thread_id  # thread_id, если есть
+        user_id = message.from_user.id
+
+        # 1️⃣ **Ищем компанию через chat_id**
+        company = db.query(Company).filter_by(chat_id=str(chat_id)).first()
+        if not company:
+            logger.error(f"❌ Ошибка: Компания не найдена для чата {chat_id}.")
+            await message.answer("❌ Ошибка: Ваша компания не найдена. Обратитесь к администратору.")
+            return
+        company_id = company.company_id
+
+        # 2️⃣ **Ищем кампанию через thread_id**
+        campaign = None
+        if thread_id:
+            chat_thread = db.query(ChatThread).filter_by(chat_id=chat_id, thread_id=thread_id).first()
+            if chat_thread:
+                campaign = db.query(Campaigns).filter_by(thread_id=chat_thread.thread_id).first()
+
+        if not campaign:
+            logger.error(f"❌ Ошибка: Кампания не найдена для chat_id={chat_id}, thread_id={thread_id}.")
+            await message.answer("❌ Ошибка: Кампания не найдена. Убедитесь, что вы выбрали нужный тред или есть активная кампания.")
+            return
+
+        campaign_id = campaign.campaign_id
+
+        # ✅ **Сохраняем в FSM внутри campaign_data**
+        await state.update_data(campaign_data={"company_id": company_id, "campaign_id": campaign_id})
+
+        logger.info(f"✅ Загружены данные: company_id={company_id}, campaign_id={campaign_id}")
+
+        await message.answer("Давайте создадим контент-план. Укажите запрещенные темы и слова.")
+        await state.set_state(AddContentPlanState.waiting_for_restricted_topics)
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при загрузке данных компании/кампании: {e}", exc_info=True)
+        await message.answer("❌ Произошла ошибка при загрузке данных. Попробуйте позже.")
+    finally:
+        db.close()
 
 
 @router.message(StateFilter(AddContentPlanState.waiting_for_restricted_topics))
@@ -127,22 +167,23 @@ async def process_send_date(message: Message, state: FSMContext):
         await message.reply("⚠️ Некорректный формат даты. Введите в формате ДД.ММ.ГГГГ.")
         return
 
-    # Получаем данные из состояния
+    # Получаем данные из campaign_data
     state_data = await state.get_data()
     campaign_data = state_data.get("campaign_data", {})
+
     company_id = campaign_data.get("company_id")
     campaign_id = campaign_data.get("campaign_id")
-    telegram_id = message.from_user.id
-    restricted_topics = state_data.get("restricted_topics", "")
-    audience = state_data.get("audience", "")
-    style = state_data.get("style", "")
-    wave_count = state_data.get("wave_count", 1)
-    send_date = state_data.get("send_date")
 
     if not company_id or not campaign_id:
         logger.error(f"❌ Ошибка: company_id или campaign_id отсутствует. Данные: {state_data}")
         await message.reply("❌ Ошибка: Кампания не найдена.")
         return
+
+    restricted_topics = state_data.get("restricted_topics", "")
+    audience = state_data.get("audience", "")
+    style = state_data.get("style", "")
+    wave_count = state_data.get("wave_count", 1)
+    send_date = state_data.get("send_date")
 
     # Описание контент-плана в JSON-формате
     description = {
@@ -158,7 +199,7 @@ async def process_send_date(message: Message, state: FSMContext):
             content_plan = create_content_plan(
                 db=db,
                 company_id=company_id,
-                chat_id=telegram_id,
+                chat_id=message.from_user.id,
                 description=description,
                 wave_count=wave_count
             )
@@ -183,10 +224,7 @@ async def process_send_date(message: Message, state: FSMContext):
 
         # **Автоматически вызываем add_template**
         logger.info(f"📌 Запуск генерации шаблона для campaign_id={campaign_id}")
-        await add_template(
-            message=message,
-            state=state
-        )
+        await add_template(message=message, state=state)
 
     except Exception as e:
         logger.error(f"Ошибка при сохранении контент-плана: {e}", exc_info=True)

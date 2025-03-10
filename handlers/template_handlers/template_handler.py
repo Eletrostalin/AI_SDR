@@ -158,12 +158,16 @@ async def process_wave_selection(callback: CallbackQuery, state: FSMContext):
         if not wave:
             await callback.message.reply("Выбранная волна не найдена.")
             return
-            # Проверяем, что дата волны не раньше завтрашнего дня
+
+        # Проверяем, что дата волны не раньше завтрашнего дня
         today = datetime.now().date()
         wave_date = wave.send_date.date()
         if wave_date < today + timedelta(days=1):
-            await callback.message.reply("Ошибка: Вы не можете выбрать дату раньше завтрашнего дня.")
-            return
+            await callback.message.reply(
+                "❌ Ошибка: Вы не можете выбрать дату раньше завтрашнего дня.\n"
+                "📅 Пожалуйста, выберите новую дату отправки."
+            )
+            return  # Оставляем пользователя в том же состоянии
 
         await state.update_data(wave_id=wave_id)  # Убрали subject, так как он больше не нужен
 
@@ -183,7 +187,7 @@ async def process_wave_selection(callback: CallbackQuery, state: FSMContext):
 
     except Exception as e:
         logger.error(f"Ошибка при выборе волны: {e}", exc_info=True)
-        await callback.message.reply("Произошла ошибка. Попробуйте снова.")
+        await callback.message.reply("❌ Произошла ошибка. Попробуйте снова.")
     finally:
         db.close()
 

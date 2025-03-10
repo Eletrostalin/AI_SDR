@@ -3,8 +3,9 @@ import pandas as pd
 from unittest.mock import AsyncMock, patch
 from sqlalchemy.orm import Session
 from db.models import Waves, Templates
-from db.db_draft import generate_drafts_for_wave
+from db.db_draft import generate_drafts_for_wave, generate_draft_for_lead
 from utils.google_doc import append_drafts_to_sheet
+from utils.utils import send_to_model
 
 @pytest.mark.asyncio
 async def test_generate_drafts_for_wave(mocker):
@@ -34,15 +35,32 @@ async def test_generate_drafts_for_wave(mocker):
 
     # 🔹 Создаем тестовые данные лидов
     test_leads = pd.DataFrame([
-        {"email": "test1@example.com", "company_name": "Компания 1"},
-        {"email": "test2@example.com", "company_name": "Компания 2"},
+        {"lead_id": 1, "email": "test1@example.com", "company_name": "Компания 1"},
+        {"lead_id": 2, "email": "test2@example.com", "company_name": "Компания 2"},
     ])
 
-    # 🔹 Мокируем `append_drafts_to_sheet`, чтобы не отправлять реальные данные в Google
+    # 🔹 Мокируем send_to_model (чтобы избежать реальных вызовов модели)
+    mocker.patch("utils.utils.send_to_model", new=AsyncMock(return_value="Сгенерированное письмо"))
+
+    # 🔹 Мокируем generate_draft_for_lead, чтобы избежать реальных генераций
+    mock_generate_draft = mocker.patch("db.db_draft.generate_draft_for_lead", new=AsyncMock())
+    mock_generate_draft.side_effect = lambda template, lead, subject, wave_id: {
+        "wave_id": wave_id,
+        "lead_id": lead["lead_id"],
+        "email": lead["email"],
+        "company_name": lead["company_name"],
+        "subject": subject,
+        "text": "Сгенерированное письмо"
+    }
+
+    # 🔹 Мокируем append_drafts_to_sheet, чтобы данные не отправлялись в Google
     append_mock = mocker.patch("utils.google_doc.append_drafts_to_sheet", return_value=None)
 
     # 🔹 Запускаем генерацию черновиков
     await generate_drafts_for_wave(db_mock, test_leads, test_wave)
+
+    # 🔹 Проверяем, что `generate_draft_for_lead` вызвался 2 раза (по числу лидов)
+    assert mock_generate_draft.call_count == 2
 
     # 🔹 Проверяем, что `append_drafts_to_sheet` вызвался
     append_mock.assert_called_once()
@@ -54,4 +72,4 @@ async def test_generate_drafts_for_wave(mocker):
     assert saved_drafts[0]["email"] == "test1@example.com"
     assert saved_drafts[1]["email"] == "test2@example.com"
     assert saved_drafts[0]["subject"] == "Тестовая тема письма"  # Проверяем тему
-    assert "Добрый день" in saved_drafts[0]["text"]  # Проверяем текст письма
+    assert "Сгенерированное письмо" in saved_drafts[0]["text"]  # Проверяем текст письма

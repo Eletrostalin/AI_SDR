@@ -17,7 +17,6 @@ from handlers.onboarding_handler import router as onboarding_router
 from handlers.template_handlers.template_handler import router as template_router
 from handlers.campaign_handlers.campaign_handlers import router as campaign_router
 from config import TARGET_CHAT_ID
-from utils.wave_shedulers import start_scheduler
 
 
 async def main():

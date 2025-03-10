@@ -61,21 +61,23 @@ async def greet_new_user(event: ChatMemberUpdated | dict, state: FSMContext):
     Обработчик добавления нового пользователя в чат. Поддерживает объекты и словари.
     """
     try:
-        # Унификация данных
         event_data = create_event_data(event) if isinstance(event, ChatMemberUpdated) else event
+        logger.debug(f"🔍 event_data: {event_data}")  # Логируем входные данные
 
-        # Извлечение данных
-        new_chat_member = event_data["new_chat_member"]
-        old_chat_member = event_data["old_chat_member"]
+        new_chat_member = event_data.get("new_chat_member")
+        old_chat_member = event_data.get("old_chat_member")
         chat_id = event_data["chat"].id
         bot = event_data["bot"]
         bot_id = bot.id
 
-        # Проверка статусов
+        # Если ключа нет — ошибка в event_data
+        if not new_chat_member:
+            logger.error("❌ Ошибка: 'new_chat_member' отсутствует в event_data")
+            return
+
         if new_chat_member["status"] == "member" and old_chat_member["status"] in {"left", "kicked"}:
             telegram_user = new_chat_member["user"]
 
-            # Пропускаем добавление бота
             if telegram_user.id == bot_id:
                 logger.debug("Бот добавлен в чат. Пропускаем обработку.")
                 return
@@ -83,10 +85,7 @@ async def greet_new_user(event: ChatMemberUpdated | dict, state: FSMContext):
             logger.debug(f"Новый пользователь {telegram_user.full_name} добавлен в чат {chat_id}.")
             db: Session = SessionLocal()
             try:
-                # Проверяем существование компании
                 existing_company = db.query(Company).filter_by(chat_id=str(chat_id)).first()
-
-                # Создаём или получаем компанию и пользователя
                 user = create_or_get_company_and_user(db, telegram_user, chat_id)
 
                 if not existing_company:
@@ -94,41 +93,38 @@ async def greet_new_user(event: ChatMemberUpdated | dict, state: FSMContext):
 
                     await bot.send_message(
                         chat_id=chat_id,
-                        text=(
-                            f"👋 Добро пожаловать, {telegram_user.full_name}!\n\n"
-                            "Я ваш виртуальный сотрудник AI SDR. Я помогу автоматизировать процессы продаж,\n\n"
-                            "управлять базой лидов, рассылками и многое другое. Давайте начнем!"
-                        )
+                        text=f"👋 Добро пожаловать, {telegram_user.full_name}!\n\n"
+                             "Я ваш виртуальный сотрудник AI SDR. Я помогу автоматизировать процессы продаж,\n\n"
+                             "управлять базой лидов, рассылками и многое другое. Давайте начнем!"
                     )
 
                     await bot.send_message(
                         chat_id=chat_id,
-                        text=(
-                            "Вот мои основные функции:\n\n"
-                            "• Работа с базой email для рассылок;\n"
-                            "• Создание и управление персонализированными email-рассылками;\n"
-                            "• Квалификация лидов с CRM;\n"
-                            "• Ответы на вопросы лидов по электронной почте;\n"
-                            "• Оповещение Вас о ключевых событиях, связанных с лидами."
-                        )
+                        text="Вот мои основные функции:\n\n"
+                             "• Работа с базой email для рассылок;\n"
+                             "• Создание и управление персонализированными email-рассылками;\n"
+                             "• Квалификация лидов с CRM;\n"
+                             "• Ответы на вопросы лидов по электронной почте;\n"
+                             "• Оповещение Вас о ключевых событиях, связанных с лидами."
                     )
 
                     await bot.send_message(
                         chat_id=chat_id,
-                        text=(
-                            "Для начала работы загрузите файл с заполненным брифом, "
-                            "чтобы я мог лучше понять Ваш бизнес и качественно персонализировать рассылки."
-                        )
+                        text="Для начала работы загрузите файл с заполненным брифом, "
+                             "чтобы я мог лучше понять Ваш бизнес и качественно персонализировать рассылки."
                     )
-                    # **Сохраняем company_id в состояние FSM**
+
+                    # ✅ Сохраняем company_id в состояние FSM
                     logger.debug(f"Сохраняем company_id в FSM: {user.company_id}")
                     await state.update_data(company_id=user.company_id)
 
+                    # ✅ Устанавливаем состояние ТОЛЬКО для добавленного пользователя
+                    storage_key = StorageKey(bot_id=bot_id, chat_id=chat_id, user_id=telegram_user.id)
+                    await state.storage.set_state(key=storage_key, state=OnboardingState.waiting_for_brief)
 
-                    # Устанавливаем состояние без использования StorageKey
-                    await state.set_state(OnboardingState.waiting_for_brief)
-                    current_state = await state.get_state()
-                    logger.debug(f"Состояние установлено: {current_state}")
+                    # Логируем установленное состояние
+                    current_state = await state.storage.get_state(key=storage_key)
+                    logger.debug(f"Состояние установлено для user_id={telegram_user.id}: {current_state}")
 
                 else:
                     logger.debug("Приветствие для существующей компании.")

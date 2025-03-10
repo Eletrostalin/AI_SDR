@@ -7,7 +7,7 @@ import pandas as pd
 import io
 
 from db.db import SessionLocal
-from db.models import CompanyInfo
+from db.models import CompanyInfo, User
 from handlers.email_table_handler import handle_email_table_request
 from states.states import OnboardingState
 
@@ -53,6 +53,18 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
     if not message.document.file_name.endswith(".xlsx"):
         await message.answer("Ошибка! Файл должен быть в формате .xlsx.")
         return
+
+        # Достаем `company_id` по `telegram_id` отправителя
+    db: Session = SessionLocal()
+    user = db.query(User).filter_by(telegram_id=str(message.from_user.id)).first()
+    db.close()
+
+    if not user or not user.company_id:
+        logger.error(f"❌ Ошибка! Не найден company_id для пользователя {message.from_user.id}.")
+        await message.answer("❌ Ошибка! Вы не привязаны к компании. Попросите администратора добавить вас.")
+        return
+
+    company_id = user.company_id  # ✅ Теперь у нас есть корректный company_id
 
     file_id = message.document.file_id
     file = await message.bot.get_file(file_id)
@@ -101,7 +113,7 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
             )
             return
 
-        await state.update_data(brief_data=renamed_data, missing_fields=[])
+        await state.update_data(company_id=company_id, brief_data=renamed_data, missing_fields=[])
         await state.set_state(OnboardingState.processing_brief)
         await message.answer("✅ Файл загружен! Обрабатываю данные...")
         await process_brief(message, state)

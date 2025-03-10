@@ -138,7 +138,6 @@ class Waves(Base):
     campaign = relationship("Campaigns", back_populates="waves")
     company = relationship("Company", back_populates="waves")
 
-
 class Templates(Base):
     __tablename__ = "templates"
 

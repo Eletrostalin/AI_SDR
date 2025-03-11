@@ -292,9 +292,13 @@ async def confirm_template(message: types.Message, state: FSMContext):
     logger.info(f"✅ [User {user_id}] Начал подтверждение шаблона...")
 
     try:
+        # Если пользователь не подтвердил шаблон, запрашиваем новый промт
         if message.text.strip().lower() != "да":
-            await message.reply("Попробуйте снова.")
-            logger.info(f"❌ [User {user_id}] Отклонил шаблон.")
+            await message.reply("Попробуйте снова. Введите новый запрос для генерации шаблона.")
+            logger.info(f"❌ [User {user_id}] Отклонил шаблон. Ожидание нового ввода.")
+
+            # Переводим состояние в ожидание нового user_request
+            await state.set_state(TemplateStates.waiting_for_description)
             return
 
         # **Логируем текущее состояние**

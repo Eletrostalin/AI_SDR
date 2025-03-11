@@ -1,5 +1,5 @@
 from datetime import datetime
-
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.orm import Session
@@ -38,6 +38,25 @@ COLUMN_MAPPING = {
 }
 
 
+@router.callback_query(lambda c: c.data in ["skip_missing_fields", "fill_missing_fields"], OnboardingState.missing_fields)
+async def handle_missing_fields_callback(call: types.CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает нажатие на кнопки "Пропустить" и "Заполнить".
+    """
+    await call.answer()  # Закрываем всплывающее уведомление
+
+    if call.data == "skip_missing_fields":
+        logger.info("✅ Пользователь решил пропустить недостающие поля.")
+        await state.update_data(missing_fields=[])
+        await state.set_state(OnboardingState.confirmation)
+        await confirm_brief(call.message, state)
+
+    elif call.data == "fill_missing_fields":
+        logger.info("🔄 Пользователь хочет загрузить исправленный файл.")
+        await state.set_state(OnboardingState.waiting_for_brief)
+        await call.message.answer("🔄 Пожалуйста, загрузите исправленный файл с недостающими данными.")
+
+
 @router.message(OnboardingState.waiting_for_brief)
 async def handle_brief_upload(message: types.Message, state: FSMContext):
     """
@@ -45,6 +64,7 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
     """
     current_state = await state.get_state()
     logger.info(f"Обработчик загрузки брифа. Текущее состояние: {current_state}")
+    await message.answer("✅ Файл загружен! Начинаю обработку...")
 
     if not message.document:
         await message.answer("Пожалуйста, загрузите файл в формате .xlsx.")
@@ -98,24 +118,28 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
         new_missing_fields = {k for k in original_headers if k not in brief_data and k.lower() != "nan"}
 
         if new_missing_fields:
-            logger.warning(f"В файле всё ещё не хватает данных: {new_missing_fields}")
+            logger.warning(f"⚠️ В файле всё ещё не хватает данных: {new_missing_fields}")
+
             await state.update_data(brief_data=renamed_data, missing_fields=list(new_missing_fields))
             await state.set_state(OnboardingState.missing_fields)
-            keyboard = types.ReplyKeyboardMarkup(
-                keyboard=[[types.KeyboardButton(text="Пропустить")], [types.KeyboardButton(text="Заполнить")]],
-                resize_keyboard=True,
-                one_time_keyboard=True
+
+            # ✅ Используем InlineKeyboardMarkup вместо ReplyKeyboardMarkup
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ Пропустить", callback_data="skip_missing_fields")],
+                    [InlineKeyboardButton(text="🔄 Заполнить", callback_data="fill_missing_fields")]
+                ]
             )
+
             await message.answer(
                 f"⚠️ В файле всё ещё не хватает следующих данных:\n\n{', '.join(new_missing_fields)}\n\n"
-                "Отправьте обновленный файл или нажмите ‘Пропустить’.",
+                "Выберите действие:",
                 reply_markup=keyboard
             )
             return
 
         await state.update_data(company_id=company_id, brief_data=renamed_data, missing_fields=[])
         await state.set_state(OnboardingState.processing_brief)
-        await message.answer("✅ Файл загружен! Обрабатываю данные...")
         await process_brief(message, state)
     except Exception as e:
         logger.error(f"Ошибка при обработке файла: {e}", exc_info=True)

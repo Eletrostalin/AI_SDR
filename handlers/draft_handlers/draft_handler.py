@@ -40,15 +40,15 @@ async def generate_drafts_for_wave(db: Session, df, wave):
     :param df: DataFrame с лидами.
     :param wave: Данные волны рассылки.
     """
-    logger.info(f"🚀 Начинаем генерацию черновиков для волны ID {wave['wave_id']} (кол-во лидов: {len(df)})")
+    logger.info(f"🚀 Начинаем генерацию черновиков для волны ID {wave.wave_id} (кол-во лидов: {len(df)})")
 
     # 1️⃣ Получаем шаблон письма
-    template = db.query(Templates).filter_by(wave_id=wave["wave_id"]).first()
+    template = db.query(Templates).filter_by(wave_id=wave.wave_id).first()
     if not template:
-        logger.error(f"❌ Нет шаблона для волны ID {wave['wave_id']}. Пропускаем.")
+        logger.error(f"❌ Нет шаблона для волны ID {wave.wave_id}. Пропускаем.")
         return
 
-    email_subject = wave["subject"]  # 🔹 Берём тему из волны
+    email_subject = wave.subject  # 🔹 Теперь берём тему корректно
 
     batch_size = 50
     leads_batches = [df[i:i + batch_size] for i in range(0, len(df), batch_size)]
@@ -56,7 +56,7 @@ async def generate_drafts_for_wave(db: Session, df, wave):
     for batch in leads_batches:
         tasks = []
         for _, lead in batch.iterrows():
-            tasks.append(generate_draft_for_lead(template, lead, email_subject, wave["wave_id"]))
+            tasks.append(generate_draft_for_lead(template, lead, email_subject, wave.wave_id))
 
         results = await asyncio.gather(*tasks)
 
@@ -82,7 +82,6 @@ async def generate_draft_for_lead(template, lead_data, subject, wave_id):
     employees = lead_data.get("employees", "не указано")
 
     logger.info(f"📝 Генерируем черновик для {company_name} (lead_id={lead_id})...")
-
 
     # 📌 **Формируем продвинутый prompt для модели**
     prompt = f"""
@@ -145,6 +144,7 @@ async def run_test():
         await generate_drafts_for_wave(db, TEST_LEADS, TEST_WAVE)
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     asyncio.run(run_test())

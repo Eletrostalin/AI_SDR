@@ -6,8 +6,8 @@ import time
 from sqlalchemy.orm import Session
 from datetime import datetime
 from db.db import SessionLocal
-from db.db_draft import generate_drafts_for_wave
 from db.models import Waves
+from handlers.draft_handlers.draft_handler import generate_drafts_for_wave
 from logger import logger
 from sqlalchemy.sql import text
 
@@ -113,7 +113,7 @@ async def process_daily_waves():
 
 def start_scheduler():
     """ Запускает планировщик. """
-    schedule.every().day.at("00:00").do(lambda: asyncio.create_task(process_daily_waves()))
+    schedule.every().day.at("12:33").do(lambda: asyncio.run(process_daily_waves()))
 
     while True:
         schedule.run_pending()

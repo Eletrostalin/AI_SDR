@@ -158,12 +158,16 @@ async def process_wave_selection(callback: CallbackQuery, state: FSMContext):
         if not wave:
             await callback.message.reply("Выбранная волна не найдена.")
             return
-            # Проверяем, что дата волны не раньше завтрашнего дня
+
+        # Проверяем, что дата волны не раньше завтрашнего дня
         today = datetime.now().date()
         wave_date = wave.send_date.date()
         if wave_date < today + timedelta(days=1):
-            await callback.message.reply("Ошибка: Вы не можете выбрать дату раньше завтрашнего дня.")
-            return
+            await callback.message.reply(
+                "❌ Ошибка: Вы не можете выбрать дату раньше завтрашнего дня.\n"
+                "📅 Пожалуйста, выберите новую дату отправки."
+            )
+            return  # Оставляем пользователя в том же состоянии
 
         await state.update_data(wave_id=wave_id)  # Убрали subject, так как он больше не нужен
 
@@ -183,7 +187,7 @@ async def process_wave_selection(callback: CallbackQuery, state: FSMContext):
 
     except Exception as e:
         logger.error(f"Ошибка при выборе волны: {e}", exc_info=True)
-        await callback.message.reply("Произошла ошибка. Попробуйте снова.")
+        await callback.message.reply("❌ Произошла ошибка. Попробуйте снова.")
     finally:
         db.close()
 
@@ -323,17 +327,14 @@ async def confirm_template(message: types.Message, state: FSMContext):
         template_content = state_data["template_content"]
         user_request = state_data["user_request"]
 
-        # **Извлекаем subject из шаблона**
-        subject = None
-        for line in template_content.split("\n"):
-            if line.lower().startswith("subject:"):
-                subject = line.replace("Subject:", "").strip()
-                break
-
-        if not subject:
-            logger.error(f"❌ [User {user_id}] Ошибка: не удалось извлечь subject.")
-            await message.reply("Ошибка: не удалось извлечь заголовок письма. Попробуйте снова.")
+        # **Получаем subject из waves**
+        wave = db.query(Waves).filter_by(wave_id=wave_id).first()
+        if not wave:
+            logger.error(f"❌ [User {user_id}] Ошибка: не удалось найти волну с wave_id={wave_id}")
+            await message.reply("Ошибка: не удалось найти волну. Попробуйте снова.")
             return
+
+        subject = wave.subject  # Используем subject из waves
 
         # **Проверяем наличие кампании**
         chat_thread = db.query(ChatThread).filter_by(chat_id=chat_id).first()
@@ -355,7 +356,7 @@ async def confirm_template(message: types.Message, state: FSMContext):
             wave_id=wave_id,
             template_content=template_content,
             user_request=user_request,
-            subject=subject,  # Теперь заголовок точно не NULL
+            subject=subject,  # Используем subject из wave
         )
 
         db.add(new_template)

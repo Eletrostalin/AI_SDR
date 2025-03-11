@@ -1,7 +1,7 @@
 from aiogram.types import FSInputFile
 from sqlalchemy.sql import text
 from aiogram.filters import StateFilter
-from db.db_campaign import create_campaign_and_thread
+from db.db_campaign import create_campaign_and_thread, update_campaign_filters
 from db.segmentation import EMAIL_SEGMENT_TRANSLATIONS
 from handlers.content_plan_handlers.content_plan_handlers import handle_add_content_plan
 from logger import logger
@@ -32,7 +32,8 @@ async def handle_add_campaign(message: Message, state: FSMContext):
 @router.message(StateFilter(AddCampaignState.waiting_for_campaign_name))
 async def process_campaign_name(message: Message, state: FSMContext):
     """
-    Обрабатывает введенное название кампании, создаёт запись в БД и тему чата.
+    Обрабатывает введенное название кампании, собирает данные и передаёт их в create_campaign_and_thread.
+    Фильтры добавляются позже.
     """
     campaign_name = message.text.strip()
 
@@ -45,23 +46,41 @@ async def process_campaign_name(message: Message, state: FSMContext):
 
     try:
         with SessionLocal() as db:
-            new_campaign = await create_campaign_and_thread(bot, db, chat_id, campaign_name)
+            # ✅ Получаем компанию по chat_id
+            company = db.execute(
+                text("SELECT company_id FROM companies WHERE chat_id = :chat_id"),
+                {"chat_id": str(chat_id)}
+            ).fetchone()
+            if not company:
+                await message.answer("❌ Ошибка: Компания не найдена.")
+                return
 
+            company_id = company[0]
+
+            # ✅ Получаем email_table_id
             email_table = db.execute(
                 text("SELECT email_table_id FROM email_tables WHERE company_id = :company_id"),
-                {"company_id": new_campaign.company_id}
+                {"company_id": company_id}
             ).fetchone()
-
             email_table_id = email_table[0] if email_table else None
 
-        campaign_data = {
-            "campaign_id": new_campaign.campaign_id,
-            "campaign_name": campaign_name,
-            "company_id": new_campaign.company_id,
-            "email_table_id": email_table_id
-        }
+            # ✅ Формируем данные для создания кампании
+            campaign_data = {
+                "campaign_name": campaign_name,
+                "company_id": company_id,
+                "email_table_id": email_table_id,
+                "status": "active",
+                "status_for_user": True
+            }
+
+            # ✅ Создаём кампанию и тему чата
+            new_campaign = await create_campaign_and_thread(bot, db, chat_id, campaign_data)
+
+        # ✅ Обновляем state (без фильтров)
+        campaign_data["campaign_id"] = new_campaign.campaign_id
         await state.update_data(campaign_data=campaign_data)
 
+        # ✅ Запрашиваем у пользователя фильтры
         segment_columns = ", ".join(
             EMAIL_SEGMENT_TRANSLATIONS.get(col, col) for col in EMAIL_SEGMENT_COLUMNS
         )
@@ -78,6 +97,7 @@ async def process_campaign_name(message: Message, state: FSMContext):
                  f"\nРегион - Москва\nИмя директора - Сергей\n"
         )
 
+        # ✅ Устанавливаем состояние ожидания фильтров
         await state.set_state(AddCampaignState.waiting_for_filters)
 
     except ValueError as e:
@@ -87,7 +107,8 @@ async def process_campaign_name(message: Message, state: FSMContext):
 @router.message(StateFilter(AddCampaignState.waiting_for_filters))
 async def process_filters(message: Message, state: FSMContext):
     """
-    Обрабатывает ввод фильтров сегментации с помощью модели и генерирует Excel-таблицу.
+    Обрабатывает ввод фильтров сегментации с помощью модели, обновляет кампанию в БД
+    и генерирует Excel-таблицу с отфильтрованными email-лидами.
     """
     user_input = message.text.strip()
 
@@ -109,19 +130,28 @@ async def process_filters(message: Message, state: FSMContext):
             return
 
         with SessionLocal() as db:
+            # 🔹 Применяем фильтры
             filtered_df = apply_filters_to_email_table(db, email_table_id, filters)
 
-        if filtered_df.empty:
-            await message.reply("⚠️ По заданным фильтрам не найдено ни одной записи.")
-            return
+            if filtered_df.empty:
+                await message.reply("⚠️ По заданным фильтрам не найдено ни одной записи.")
+                return
 
-        excel_path = generate_excel_from_df(filtered_df, company_id, campaign_id)
+            # 🔹 Обновляем фильтры кампании в БД
+            if not update_campaign_filters(db, campaign_id, filters):
+                await message.reply("❌ Ошибка при обновлении фильтров кампании.")
+                return
 
+            # 🔹 Генерируем Excel-файл с отфильтрованными email-лидами
+            excel_path = generate_excel_from_df(filtered_df, company_id, campaign_id)
+
+        # 🔹 Отправляем файл пользователю
         await message.reply_document(
             FSInputFile(excel_path),
             caption="📂 Готово! 📊 Сегментированная база для данной рекламной кампании подготовлена."
         )
 
+        # 🔹 Обновляем состояние с новыми фильтрами
         campaign_data["filters"] = filters
         await state.update_data(campaign_data=campaign_data)
 
@@ -131,5 +161,4 @@ async def process_filters(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Ошибка обработки фильтров через модель: {e}", exc_info=True)
         await message.reply("❌ Произошла ошибка при обработке фильтров. Попробуйте ещё раз.")
-
 

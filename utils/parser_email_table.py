@@ -8,7 +8,7 @@ from db.dynamic_table_manager import create_dynamic_email_table
 from db.email_table_db import process_table_operations
 from db.segmentation import EMAIL_SEGMENT_COLUMNS
 from sqlalchemy import inspect
-
+from aiogram.fsm.context import FSMContext
 from promts.email_table_promt import generate_column_mapping_prompt
 
 logger = logging.getLogger(__name__)
@@ -89,25 +89,51 @@ def clean_and_validate_emails(df: pd.DataFrame) -> tuple:
     return df, email_column, len(multi_email_rows), multi_email_rows, problematic_values
 
 
-async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message):
-    """Сохраняет очищенные данные в БД."""
-    missing_columns = [col for col in EMAIL_SEGMENT_COLUMNS if col not in df.columns]
+async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message, state: FSMContext):
+    """Сохраняет очищенные данные в БД, используя `file_name`, сохранённый в FSMContext."""
 
+    # Извлекаем `file_name` из состояния FSM
+    state_data = await state.get_data()
+    file_name = state_data.get("file_name")  # Теперь `file_name` сохраняется при загрузке
+
+    if not file_name:
+        await message.reply("⚠️ Ошибка: не удалось определить имя файла.")
+        return False
+
+    logger.debug(f"📌 Используется file_name: {file_name}")
+
+    # **Добавляем file_name в DataFrame**
+    df["file_name"] = file_name  # ⬅️ Добавили колонку с названием файла
+
+    # **Обновляем список обязательных колонок**
+    REQUIRED_COLUMNS = EMAIL_SEGMENT_COLUMNS + ["file_name"]
+
+    # Проверяем наличие обязательных колонок
+    missing_columns = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing_columns:
         await message.reply("⚠️ Некоторые обязательные колонки отсутствуют. Проверьте загруженный файл.")
         return False
 
-    df = df[[col for col in df.columns if col in EMAIL_SEGMENT_COLUMNS]]
+    # Фильтруем DataFrame, оставляя только необходимые колонки
+    df = df[[col for col in df.columns if col in REQUIRED_COLUMNS]]
     if df.empty:
         await message.reply("❌ В обработанном файле отсутствуют данные после фильтрации.")
         return False
 
+    # Проверяем, существует ли таблица
     if not inspect(engine).has_table(segment_table_name):
         create_dynamic_email_table(engine, segment_table_name)
         logger.info(f"✅ Таблица '{segment_table_name}' создана.")
 
+    # Получаем chat_id
     chat_id = str(message.chat.id)
-    file_name = "email_data.xlsx"
-    process_table_operations(df, segment_table_name, chat_id, message, file_name)
-    await message.reply(f"✅ Данные успешно загружены! 📊 Итоговое количество записей: **{len(df)}**.")
-    return True
+
+    # Передаём `file_name` в `process_table_operations`
+    result = process_table_operations(df, file_name, chat_id, message, segment_table_name)
+
+    if result:
+        await message.reply(f"✅ Данные из {file_name} успешно загружены! 📊 Итоговое количество записей: **{len(df)}**.")
+    else:
+        await message.reply(f"❌ Ошибка при обработке данных из {file_name}.")
+
+    return result

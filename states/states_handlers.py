@@ -16,7 +16,7 @@ from handlers.campaign_handlers.campaign_handlers import (
     process_filters
 )
 from handlers.content_plan_handlers.content_plan_handlers import process_restricted_topics, process_audience_style, \
-    process_send_date
+    process_send_date, process_wave_name
 from handlers.email_table_handler import handle_file_upload, handle_email_choice_callback, handle_campaign_decision, \
     handle_first_question_decision, handle_second_question_decision
 from handlers.onboarding_handler import (
@@ -138,6 +138,8 @@ async def handle_add_content_plan_states(message: Message, state: FSMContext, cu
         await process_restricted_topics(message, state)
     elif current_state == AddContentPlanState.waiting_for_audience_style.state:
         await process_audience_style(message, state)
+    elif current_state == AddContentPlanState.waiting_for_wave_name.state:  # Новый шаг
+        await process_wave_name(message, state)
     elif current_state == AddContentPlanState.waiting_for_send_date.state:
         await process_send_date(message, state)
 

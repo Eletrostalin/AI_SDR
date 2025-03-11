@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 # Колонки, которые используются в динамических таблицах
 DYNAMIC_EMAIL_TABLE_COLUMNS = [
-    Column("table_name", String, nullable=True),
+    Column("file_name", String, nullable=True),
     Column("name", String, nullable=True),
     Column("region", String, nullable=True),
     Column("msp_registry", String, nullable=True),

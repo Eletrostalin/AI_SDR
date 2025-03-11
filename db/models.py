@@ -87,6 +87,7 @@ class Campaigns(Base):
     created_at = Column(DateTime, default=func.now(), nullable=False)
     status = Column(String, default="active", nullable=False)
     status_for_user = Column(Boolean, default=True, nullable=False)
+    filters = Column(JSON, nullable=True)
     email_table_id = Column(Integer, ForeignKey("email_tables.email_table_id"), nullable=True)  # Добавляем email_table_id
 
     # Связи
@@ -136,7 +137,6 @@ class Waves(Base):
     content_plan = relationship("ContentPlan", back_populates="waves")
     campaign = relationship("Campaigns", back_populates="waves")
     company = relationship("Company", back_populates="waves")
-
 
 class Templates(Base):
     __tablename__ = "templates"

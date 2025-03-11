@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
-def process_table_operations(df: pd.DataFrame, segment_table_name: str, chat_id: str, message, file_name) -> bool:
+def process_table_operations(df: pd.DataFrame, file_name: str, chat_id: str, message, table_name) -> bool:
     """
     Открывает сессию, создаёт таблицу и сохраняет данные в БД.
     """
@@ -18,32 +18,34 @@ def process_table_operations(df: pd.DataFrame, segment_table_name: str, chat_id:
     try:
         from db.models import EmailTable, Company
 
-        df.loc[:, 'table_name'] = file_name
+        # ✅ Добавляем колонку `file_name`, если её ещё нет
+        if "file_name" not in df.columns:
+            df["file_name"] = file_name
 
-        # Получение компании по chat_id
+        # Получаем компанию по chat_id
         company = db.query(Company).filter(Company.chat_id == chat_id).first()
         if not company:
             message.reply("Компания не найдена. Убедитесь, что вы зарегистрировали свою компанию.")
             return False
 
-        # Проверяем и создаем запись в EmailTable
+        # ✅ Создаём запись в EmailTable с `file_name`
         if not create_email_table_record(
                 db,
                 company_id=company.company_id,
-                table_name=segment_table_name,
-                description="Таблица сегментации email"
+                table_name=table_name,  # Используем `table_name`, а не file_name
+                description=f"Таблица сегментации email ({file_name})"
         ):
             message.reply("Ошибка при добавлении записи в сводную таблицу.")
-            logger.error(f"Ошибка при создании записи для таблицы: {segment_table_name}")
+            logger.error(f"Ошибка при создании записи для таблицы: {table_name}")
             return False
 
-        # Сохранение данных в БД
-        if save_data_to_db(df.to_dict(orient="records"), segment_table_name, db):
-            message.reply("Данные из таблицы успешно обработаны и сохранены.")
+        # ✅ Сохранение данных в БД (теперь `file_name` передаётся в `df`)
+        if save_data_to_db(df.to_dict(orient="records"), table_name, db):
+            message.reply(f"✅ Данные из {file_name} успешно обработаны и сохранены.")
             return True
         else:
-            message.reply("Ошибка при сохранении данных в базу.")
-            logger.error(f"Ошибка при сохранении данных в таблицу: {segment_table_name}")
+            message.reply(f"❌ Ошибка при сохранении данных из {file_name}.")
+            logger.error(f"Ошибка при сохранении данных в таблицу: {table_name}")
             return False
     finally:
         db.close()

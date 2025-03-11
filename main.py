@@ -17,6 +17,7 @@ from handlers.onboarding_handler import router as onboarding_router
 from handlers.template_handlers.template_handler import router as template_router
 from handlers.campaign_handlers.campaign_handlers import router as campaign_router
 from config import TARGET_CHAT_ID
+from utils.wave_shedulers import start_scheduler
 
 
 async def main():
@@ -35,8 +36,12 @@ async def main():
     logger.info("Маршрутизаторы настроены.")
     logger.info(f"Целевой ID чата: {TARGET_CHAT_ID}")
 
-    # 🔹 Запускаем планировщик волн
-    #start_scheduler()
+    #  Запускаем задачу для прослушивания почты (параллельно боту)
+    #asyncio.create_task(check_new_emails())
+    logger.info("📧 Модуль прослушивания почты запущен.")
+
+    # Запускаем планировщик волн
+    start_scheduler()
 
     # Запуск поллинга
     await dp.start_polling(bot)

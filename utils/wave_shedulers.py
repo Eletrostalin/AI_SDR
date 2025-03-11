@@ -11,10 +11,6 @@ from handlers.draft_handlers.draft_handler import generate_drafts_for_wave
 from logger import logger
 from sqlalchemy.sql import text
 
-# 🔹 ID Google Таблицы
-SHEET_ID = "1YXv8CcjB_iOhDKAJZMkUV7BAmKE9x1kUrsN6cCWg2I8"
-SHEET_NAME = "Черновики"
-
 
 def get_today_waves(db: Session):
     """ Получает волны, запланированные на сегодня. """
@@ -113,7 +109,7 @@ async def process_daily_waves():
 
 def start_scheduler():
     """ Запускает планировщик. """
-    schedule.every().day.at("12:33").do(lambda: asyncio.run(process_daily_waves()))
+    schedule.every().day.at("00:00").do(lambda: asyncio.run(process_daily_waves()))
 
     while True:
         schedule.run_pending()

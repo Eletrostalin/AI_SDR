@@ -1,5 +1,7 @@
 import gspread
 from google.oauth2.service_account import Credentials
+
+from config import CREDENTIALS_FILE, SCOPES
 from logger import logger
 import os
 from datetime import datetime
@@ -7,11 +9,7 @@ from datetime import datetime
 import pandas as pd
 from openpyxl.workbook import Workbook
 from logger import logger
-
-
-# 🔹 Подключаемся к Google Sheets
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-CREDENTIALS_FILE = "/Users/nickstanchenkov/AI SDR/credentials.json"  # Загрузи свой JSON-файл с ключами
+  # Загрузи свой JSON-файл с ключами
 
 
 def create_excel_table(data: list, file_name: str = "content_plans.xlsx") -> str:

@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, DateTime, ForeignKey, Text, Boolean, JSON, func, BigInteger
+    Column, Integer, String, DateTime, ForeignKey, Text, Boolean, JSON, func, BigInteger, TIMESTAMP, text
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.postgresql import JSONB
@@ -18,6 +18,15 @@ class User(Base):
 
     # Связь с таблицей companies
     company = relationship("Company", back_populates="users")
+
+class EmailConnections(Base):
+    __tablename__ = "email_connections"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    company_id = Column(Integer, ForeignKey("companies.company_id", ondelete="CASCADE"), nullable=False)
+    chat_id = Column(BigInteger, nullable=False)
+    connection_data = Column(JSONB, nullable=False)
+    company = relationship("Company", back_populates="email_connections")
 
 class ChatThread(Base):
     __tablename__ = "chat_threads"
@@ -45,6 +54,7 @@ class Company(Base):
     content_plans = relationship("ContentPlan", back_populates="company")
     waves = relationship("Waves", back_populates="company")
     templates = relationship("Templates", back_populates="company")
+    email_connections = relationship("EmailConnections", back_populates="company")
 
 class CompanyInfo(Base):
     __tablename__ = "company_info"
@@ -154,7 +164,6 @@ class Templates(Base):
     company = relationship("Company", back_populates="templates")
     campaign = relationship("Campaigns", back_populates="templates")
     wave = relationship("Waves", foreign_keys=[wave_id])
-
 
 class Migration(Base):
     """

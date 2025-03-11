@@ -19,6 +19,15 @@ class User(Base):
     # Связь с таблицей companies
     company = relationship("Company", back_populates="users")
 
+class EmailConnections(Base):
+    __tablename__ = "email_connections"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    company_id = Column(Integer, ForeignKey("companies.company_id", ondelete="CASCADE"), nullable=False)
+    chat_id = Column(BigInteger, nullable=False)
+    connection_data = Column(JSONB, nullable=False)
+    company = relationship("Company", back_populates="email_connections")
+
 class ChatThread(Base):
     __tablename__ = "chat_threads"
 
@@ -154,7 +163,6 @@ class Templates(Base):
     company = relationship("Company", back_populates="templates")
     campaign = relationship("Campaigns", back_populates="templates")
     wave = relationship("Waves", foreign_keys=[wave_id])
-
 
 class Migration(Base):
     """

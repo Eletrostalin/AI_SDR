@@ -204,8 +204,21 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
             await message.reply("❌ Ошибка: не удалось определить имя файла.")
             return False
 
-        df["file_name"] = file_name  # ✅ Принудительно добавляем колонку с именем файла
+        df["file_name"] = file_name  # ✅ Добавляем колонку с именем файла
         logger.debug(f"📌 Добавлен file_name в DataFrame: {file_name}")
+
+        # 🔹 Фильтруем: оставляем только строки, где email содержит "@"
+        if "email" in df.columns:
+            total_rows = len(df)
+            df = df[df["email"].astype(str).str.contains("@", na=False)]
+            filtered_out_rows = total_rows - len(df)
+
+            if filtered_out_rows > 0:
+                await message.reply(f"⚠️ Исключено {filtered_out_rows} строк без корректного email.")
+
+            if df.empty:
+                await message.reply("❌ В загружаемом файле не найдено валидных email-адресов.")
+                return False
 
         df, valid_emails, multi_email_rows, problematic_rows, problematic_values = clean_and_validate_emails(df)
 
@@ -213,39 +226,12 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
             await message.reply("❌ Ошибка: В загружаемой таблице не найдена колонка e-mail.")
             return False
 
-        if multi_email_rows > 0:
-            logger.warning(f"⚠️ Найдено {multi_email_rows} записей с несколькими email. "
-                           f"Номера строк: {problematic_rows}. Значения: {problematic_values}")
-
-            await state.update_data(
-                processing_df=df,
-                email_column=valid_emails,
-                problematic_rows=problematic_rows,
-                problematic_values=problematic_values
-            )
-
-            logger.debug(f"🔄 Устанавливаем состояние: {EmailUploadState.duplicate_email_check}")
-            await state.set_state(EmailUploadState.duplicate_email_check)
-            logger.debug(f"✅ Установлено состояние: {await state.get_state()}")
-
-            values_display = "\n".join([f"🔹 **Строка {row}**: `{val}`" for row, val in zip(problematic_rows, problematic_values)])
-
-            await message.reply(
-                f"⚠️ В загруженном файле обнаружено **{multi_email_rows}** записей с несколькими email в одной ячейке.\n\n"
-                f"{values_display}\n\n"
-                "Выберите, как поступить:",
-                reply_markup=get_email_choice_keyboard()
-            )
-
-            return False  # ⚠️ Важно: Это уже обработано, поэтому `handle_file_upload` НЕ должен отправлять сообщение!
-
         await save_cleaned_data(df, segment_table_name, message, state)
         return True
 
     except Exception as e:
         logger.error(f"❌ Ошибка при обработке файла {file_path}: {e}", exc_info=True)
         return False  # Ошибка логируется, но **сообщение пользователю НЕ отправляется**
-
 
 @router.callback_query(StateFilter(EmailUploadState.duplicate_email_check))
 async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):

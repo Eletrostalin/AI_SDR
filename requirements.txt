@@ -1,6 +1,7 @@
 aiogram==3.14.0             # Библиотека для работы с Telegram API и создания Telegram-ботов
 beautifulsoup4==4.12.3      # Библиотека для парсинга HTML и XML, используется для анализа данных из веб-источников
 greenlet==3.1.1             # Нужен для поддержки асинхронных операций в SQLAlchemy и других асинхронных библиотеках
+gspread==6.2.0
 langchain==0.3.8
 langchain-community==0.3.9
 langchain-core==0.3.28

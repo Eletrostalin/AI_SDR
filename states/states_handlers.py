@@ -20,7 +20,7 @@ from handlers.content_plan_handlers.content_plan_handlers import process_restric
 from handlers.email_table_handler import handle_file_upload, handle_email_choice_callback, handle_campaign_decision, \
     handle_first_question_decision, handle_second_question_decision
 from handlers.onboarding_handler import (
-    handle_brief_upload, process_brief, confirm_brief, handle_missing_fields_response)
+    handle_brief_upload, process_brief, confirm_brief, handle_missing_fields_response, handle_email_connections_upload)
 from handlers.template_handlers.template_handler import handle_user_input, confirm_template
 from states.states import (
     OnboardingState,
@@ -31,6 +31,10 @@ from states.states import (
 )
 
 from logger import logger
+
+
+async def process_email_connections(message, state):
+    pass
 
 
 async def handle_onboarding_states(message: Message, state: FSMContext, current_state: str):
@@ -44,14 +48,20 @@ async def handle_onboarding_states(message: Message, state: FSMContext, current_
         await process_brief(message, state)
 
     elif current_state == OnboardingState.missing_fields.state:
-        await handle_missing_fields_response(message, state)  # Добавили обработчик пропущенных полей
+        await handle_missing_fields_response(message, state)
 
     elif current_state == OnboardingState.confirmation.state:
         await confirm_brief(message, state)
 
+    elif current_state == OnboardingState.waiting_for_email_connections.state:
+        await handle_email_connections_upload(message, state)  # Новый обработчик email-подключений
+
+    elif current_state == OnboardingState.processing_email_connections.state:
+        await process_email_connections(message, state)  # Обработка email-подключений и сохранение в БД
+
     else:
         # Если состояние не распознано
-        await message.answer("Неизвестное состояние. Пожалуйста, начните заново.")
+        await message.answer("❌ Неизвестное состояние. Пожалуйста, начните заново.")
         await state.clear()
 
 

@@ -7,7 +7,7 @@ import pandas as pd
 import io
 
 from db.db import SessionLocal
-from db.models import CompanyInfo, User
+from db.models import CompanyInfo, User, EmailConnections
 from handlers.email_table_handler import handle_email_table_request
 from states.states import OnboardingState
 
@@ -227,10 +227,11 @@ async def confirm_brief(message: types.Message, state: FSMContext):
     await message.answer(
         "✅ Готово! Данные загружены. Теперь я знаю ключевые моменты о Вашей компании и могу персонализировать рассылки."
     )
+    await state.set_state(OnboardingState.waiting_for_email_connections)
+    await message.answer(
+        "📧 Теперь загрузите файл с данными для email-подключений. Он должен содержать настройки SMTP и IMAP.",
+    )
 
-    logger.info("Состояние онбординга очищено. Переход к следующему этапу.")
-    await state.clear()
-    await handle_email_table_request(message, state)
 
 
 @router.message(OnboardingState.missing_fields)
@@ -258,3 +259,104 @@ async def handle_missing_fields_response(message: types.Message, state: FSMConte
 
     else:
         await message.answer("❌ Неправильный ответ. Напишите **'Пропустить'** или **'Заполнить'**.")
+
+
+@router.message(OnboardingState.waiting_for_email_connections)
+async def handle_email_connections_upload(message: types.Message, state: FSMContext):
+    """
+    Обработка загруженного файла с email-подключениями.
+    """
+    if not message.document:
+        await message.answer("❌ Ошибка! Загрузите файл в формате .xlsx.")
+        return
+
+    if not message.document.file_name.endswith(".xlsx"):
+        await message.answer("❌ Ошибка! Файл должен быть в формате .xlsx.")
+        return
+
+    db: Session = SessionLocal()
+    user = db.query(User).filter_by(telegram_id=str(message.from_user.id)).first()
+    db.close()
+
+    if not user or not user.company_id:
+        logger.error(f"❌ Ошибка! Не найден company_id для пользователя {message.from_user.id}.")
+        await message.answer("❌ Ошибка! Вы не привязаны к компании. Попросите администратора добавить вас.")
+        return
+
+    company_id = user.company_id
+
+    file_id = message.document.file_id
+    file = await message.bot.get_file(file_id)
+    file_stream = await message.bot.download_file(file.file_path)
+
+    try:
+        df = pd.read_excel(io.BytesIO(file_stream.read()), header=None)
+
+
+        if df.empty:
+            await message.answer("❌ Файл пуст. Проверьте его содержимое.")
+            return
+
+        # ✅ Преобразуем данные в словарь
+        email_connections = parse_email_accounts(df)
+
+        if not email_connections:
+            await message.answer("❌ Ошибка! Не удалось извлечь данные из файла.")
+            return
+
+        logger.info(f"📧 Полученные email-подключения: {email_connections}")
+
+        # ✅ Сохраняем в БД
+        db = SessionLocal()
+        new_connection = EmailConnections(
+            chat_id=message.chat.id,
+            company_id=company_id,
+            connection_data=email_connections
+        )
+        db.add(new_connection)
+        db.commit()
+        db.close()
+
+        logger.info(f"✅ Email-подключения сохранены для компании ID: {company_id}")
+
+        logger.info("Состояние онбординга очищено. Переход к следующему этапу.")
+        await state.clear()
+        await handle_email_table_request(message, state)
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при обработке email-подключений: {e}", exc_info=True)
+        await message.answer("❌ Ошибка при обработке файла. Проверьте его содержимое и попробуйте снова.")
+
+
+def parse_email_accounts(df: pd.DataFrame) -> dict:
+    """
+    Разбирает DataFrame с настройками почты в JSON-структуру.
+    """
+    email_accounts = {}
+
+    current_email = None
+    for i in range(len(df)):
+        row = df.iloc[i, :].dropna().tolist()
+        if not row:
+            continue
+
+        first_cell = str(row[0]).strip().lower()
+
+        if "почта" in first_cell:  # Начало нового блока почты
+            current_email = f"email_{len(email_accounts) + 1}"
+            email_accounts[current_email] = {}
+        elif current_email:
+            if "логин" in first_cell:
+                email_accounts[current_email]["login"] = row[1] if len(row) > 1 else None
+            elif "проль" in first_cell:
+                email_accounts[current_email]["password"] = row[1] if len(row) > 1 else None
+            elif "smtp-сервер" in first_cell:
+                email_accounts[current_email]["smtp_server"] = row[1] if len(row) > 1 else None
+            elif "порт smtp" in first_cell:
+                email_accounts[current_email]["smtp_port"] = int(row[1]) if len(row) > 1 else None
+            elif "imap-сервер" in first_cell:
+                email_accounts[current_email]["imap_server"] = row[1] if len(row) > 1 else None
+            elif "порт imap" in first_cell:
+                email_accounts[current_email]["imap_port"] = int(row[1]) if len(row) > 1 else None
+
+    return email_accounts

@@ -11,7 +11,7 @@ from logger import logger
 
 # 🔹 Подключаемся к Google Sheets
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-CREDENTIALS_FILE = "credentials.json"  # Загрузи свой JSON-файл с ключами
+CREDENTIALS_FILE = "/Users/nickstanchenkov/AI SDR/credentials.json"  # Загрузи свой JSON-файл с ключами
 
 
 def create_excel_table(data: list, file_name: str = "content_plans.xlsx") -> str:

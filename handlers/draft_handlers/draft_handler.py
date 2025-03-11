@@ -10,11 +10,11 @@ from logger import logger
 from utils.google_doc import append_drafts_to_sheet
 from utils.utils import send_to_model
 
-# 🔹 ID Google Таблицы (замени на актуальный, если нужно)
+# 🔹 ID Google Таблицы
 SHEET_ID = "1YXv8CcjB_iOhDKAJZMkUV7BAmKE9x1kUrsN6cCWg2I8"
 SHEET_NAME = "Черновики"
 
-# 🔹 Данные тестовых лидов (из таблицы)
+# 🔹 Данные тестовых лидов
 TEST_LEADS = pd.DataFrame([
     {"lead_id": 1, "email": "test1@example.com", "company_name": "ООО \"Дельтабио\"", "region": "г Москва", "revenue": 236265000, "employees": 90},
     {"lead_id": 2, "email": "test2@example.com", "company_name": "ООО \"Аркада\"", "region": "г Москва", "revenue": 223247000, "employees": 80},
@@ -23,12 +23,12 @@ TEST_LEADS = pd.DataFrame([
 
 # 🔹 Данные тестовой волны
 TEST_WAVE = {
-    "wave_id": 21,
+    "wave_id": 22,
     "content_plan_id": 25,
     "campaign_id": 59,
     "company_id": 121,
     "send_date": "2025-03-10 00:00:00",
-    "subject": "Первая волна"
+    "subject": "Первая волна"  # 🔹 Фиксированная тема из волны
 }
 
 
@@ -48,7 +48,7 @@ async def generate_drafts_for_wave(db: Session, df, wave):
         logger.error(f"❌ Нет шаблона для волны ID {wave['wave_id']}. Пропускаем.")
         return
 
-    email_subject = wave["subject"]
+    email_subject = wave["subject"]  # 🔹 Берём тему из волны
 
     batch_size = 50
     leads_batches = [df[i:i + batch_size] for i in range(0, len(df), batch_size)]
@@ -70,7 +70,7 @@ async def generate_draft_for_lead(template, lead_data, subject, wave_id):
 
     :param template: Шаблон письма.
     :param lead_data: Данные лида (dict).
-    :param subject: Тема письма.
+    :param subject: Тема письма (берётся из волны).
     :param wave_id: ID волны.
     :return: Словарь с черновиком.
     """
@@ -123,7 +123,7 @@ async def generate_draft_for_lead(template, lead_data, subject, wave_id):
         "lead_id": lead_id,
         "email": email,
         "company_name": company_name,
-        "subject": subject,
+        "subject": subject,  # 🔹 Теперь subject передаётся в качестве аргумента и один для всех писем
         "text": response.strip()
     }
 
@@ -137,7 +137,6 @@ async def run_test():
     from sqlalchemy.orm import sessionmaker
 
     # **Настройка подключения к БД**
-     # Заменить на реальную
     engine = create_engine(DATABASE_URL)
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()

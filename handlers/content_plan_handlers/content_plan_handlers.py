@@ -144,12 +144,24 @@ async def process_audience_style(message: Message, state: FSMContext):
         await state.update_data(audience=audience, style=style)
         await state.update_data(wave_count=1)  # Всегда 1 волна
 
-        await message.answer("Укажите дату отправки контент-плана (в формате ДД.ММ.ГГГГ):")
-        await state.set_state(AddContentPlanState.waiting_for_send_date)
+        await message.answer("Введите название волны (например, 'Первая волна'):")
+        await state.set_state(AddContentPlanState.waiting_for_wave_name)
 
     except json.JSONDecodeError as e:
         logger.error(f"Ошибка обработки данных от модели: {e}", exc_info=True)
         await message.reply("Произошла ошибка при анализе ответа. Попробуйте ещё раз.")
+
+
+@router.message(StateFilter(AddContentPlanState.waiting_for_wave_name))
+async def process_wave_name(message: Message, state: FSMContext):
+    """
+    Сохраняет название волны и запрашивает дату отправки.
+    """
+    wave_name = message.text.strip()
+    await state.update_data(wave_name=wave_name)
+
+    await message.answer("Укажите дату отправки контент-плана (в формате ДД.ММ.ГГГГ):")
+    await state.set_state(AddContentPlanState.waiting_for_send_date)
 
 
 @router.message(StateFilter(AddContentPlanState.waiting_for_send_date))
@@ -184,6 +196,7 @@ async def process_send_date(message: Message, state: FSMContext):
     style = state_data.get("style", "")
     wave_count = state_data.get("wave_count", 1)
     send_date = state_data.get("send_date")
+    wave_name = state_data.get("wave_name", "Без названия")
 
     # Описание контент-плана в JSON-формате
     description = {
@@ -214,13 +227,14 @@ async def process_send_date(message: Message, state: FSMContext):
                 company_id=company_id,
                 campaign_id=campaign_id,
                 send_date=send_date,
-                subject="Первая волна"
+                subject=wave_name
             )
 
             if not wave:
                 raise Exception("Не удалось создать волну.")
 
         await message.answer("✅ Контент-план успешно создан.")
+        await message.answer("Перейдем к созданию шаблона")
 
         # **Автоматически вызываем add_template**
         logger.info(f"📌 Запуск генерации шаблона для campaign_id={campaign_id}")

@@ -32,6 +32,7 @@ class AddContentPlanState(StatesGroup):
     """
     waiting_for_restricted_topics = State()  # Ожидание ввода запрещенных тем и слов
     waiting_for_audience_style = State()  # Ожидание ввода аудитории и стиля общения
+    waiting_for_wave_name = State()
     waiting_for_send_date = State()  # Ожидание даты отправки контент-плана
 
 class EmailUploadState(StatesGroup):

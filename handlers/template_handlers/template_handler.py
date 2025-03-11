@@ -327,17 +327,14 @@ async def confirm_template(message: types.Message, state: FSMContext):
         template_content = state_data["template_content"]
         user_request = state_data["user_request"]
 
-        # **Извлекаем subject из шаблона**
-        subject = None
-        for line in template_content.split("\n"):
-            if line.lower().startswith("subject:"):
-                subject = line.replace("Subject:", "").strip()
-                break
-
-        if not subject:
-            logger.error(f"❌ [User {user_id}] Ошибка: не удалось извлечь subject.")
-            await message.reply("Ошибка: не удалось извлечь заголовок письма. Попробуйте снова.")
+        # **Получаем subject из waves**
+        wave = db.query(Waves).filter_by(wave_id=wave_id).first()
+        if not wave:
+            logger.error(f"❌ [User {user_id}] Ошибка: не удалось найти волну с wave_id={wave_id}")
+            await message.reply("Ошибка: не удалось найти волну. Попробуйте снова.")
             return
+
+        subject = wave.subject  # Используем subject из waves
 
         # **Проверяем наличие кампании**
         chat_thread = db.query(ChatThread).filter_by(chat_id=chat_id).first()
@@ -359,7 +356,7 @@ async def confirm_template(message: types.Message, state: FSMContext):
             wave_id=wave_id,
             template_content=template_content,
             user_request=user_request,
-            subject=subject,  # Теперь заголовок точно не NULL
+            subject=subject,  # Используем subject из wave
         )
 
         db.add(new_template)

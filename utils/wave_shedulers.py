@@ -2,7 +2,6 @@ import asyncio
 import json
 import pandas as pd
 import schedule
-import time
 from sqlalchemy.orm import Session
 from datetime import datetime
 from db.db import SessionLocal
@@ -10,10 +9,6 @@ from db.models import Waves
 from handlers.draft_handlers.draft_handler import generate_drafts_for_wave
 from logger import logger
 from sqlalchemy.sql import text
-
-# 🔹 ID Google Таблицы
-SHEET_ID = "1YXv8CcjB_iOhDKAJZMkUV7BAmKE9x1kUrsN6cCWg2I8"
-SHEET_NAME = "Черновики"
 
 
 def get_today_waves(db: Session):
@@ -23,13 +18,7 @@ def get_today_waves(db: Session):
 
 
 def get_filtered_leads_for_wave(db: Session, wave_id: int) -> pd.DataFrame:
-    """
-    Получает отфильтрованный список лидов для заданной волны.
-
-    :param db: Сессия базы данных.
-    :param wave_id: ID волны.
-    :return: DataFrame с отфильтрованными лидами.
-    """
+    """ Получает отфильтрованный список лидов для заданной волны. """
     try:
         wave_result = db.execute(
             text("SELECT campaign_id FROM waves WHERE wave_id = :wave_id"),
@@ -111,14 +100,14 @@ async def process_daily_waves():
             await generate_drafts_for_wave(db, df, wave)
 
 
-def start_scheduler():
-    """ Запускает планировщик. """
-    schedule.every().day.at("12:33").do(lambda: asyncio.run(process_daily_waves()))
-
+async def scheduler_loop():
+    """ Асинхронный цикл для запуска планировщика. """
     while True:
-        schedule.run_pending()
-        time.sleep(60)
+        await process_daily_waves()
+        await asyncio.sleep(86400)  # Ожидание 24 часа (86400 секунд)
 
 
-if __name__ == "__main__":
-    start_scheduler()
+def start_scheduler():
+    """ Функция теперь запускает асинхронную задачу вместо блокирующего цикла. """
+    asyncio.create_task(scheduler_loop())  # Запуск в фоновом режиме
+    logger.info("✅ Планировщик волн запущен в фоновом режиме.")

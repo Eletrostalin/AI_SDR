@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, DateTime, ForeignKey, Text, Boolean, JSON, func, BigInteger
+    Column, Integer, String, DateTime, ForeignKey, Text, Boolean, JSON, func, BigInteger, TIMESTAMP, text
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.postgresql import JSONB
@@ -54,6 +54,7 @@ class Company(Base):
     content_plans = relationship("ContentPlan", back_populates="company")
     waves = relationship("Waves", back_populates="company")
     templates = relationship("Templates", back_populates="company")
+    email_connections = relationship("EmailConnections", back_populates="company")
 
 class CompanyInfo(Base):
     __tablename__ = "company_info"

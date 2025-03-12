@@ -55,12 +55,12 @@ async def add_template(message: types.Message, state: FSMContext):
         company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
         business_sector = company_info.business_sector if company_info else None
 
-        if not business_sector:
-            await message.reply("Отрасль компании не найдена. Проверьте заполненные данные.")
-            logger.warning(f"Отрасль компании (business_sector) не найдена для company_id={company.company_id}")
-            return
-
-        logger.debug(f"Определена отрасль компании: {business_sector}")
+        # if not business_sector:
+        #     await message.reply("Отрасль компании не найдена. Проверьте заполненные данные.")
+        #     logger.warning(f"Отрасль компании (business_sector) не найдена для company_id={company.company_id}")
+        #     return
+        #
+        # logger.debug(f"Определена отрасль компании: {business_sector}")
 
         # Получаем список контент-планов для кампании
         content_plans = db.query(ContentPlan).filter_by(campaign_id=campaign.campaign_id).all()

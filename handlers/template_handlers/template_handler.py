@@ -146,7 +146,7 @@ async def process_content_plan_selection(callback: CallbackQuery, state: FSMCont
 @router.callback_query(lambda c: c.data.startswith("select_wave:"))
 async def process_wave_selection(callback: CallbackQuery, state: FSMContext):
     """
-    Обрабатывает выбор волны пользователем и запрашивает пожелания к шаблону с AI-генерацией.
+    Обрабатывает выбор волны пользователем и запрашивает пожелания к шаблону.
     """
     wave_id = int(callback.data.split(":")[1])
 
@@ -171,18 +171,13 @@ async def process_wave_selection(callback: CallbackQuery, state: FSMContext):
 
         await state.update_data(wave_id=wave_id)  # Убрали subject, так как он больше не нужен
 
-        # 🔹 **Используем AI для генерации приглашения**
-        try:
-            invite_message = await async_invite_tool()
-            if not invite_message:
-                raise ValueError("AI вернул пустое приглашение.")
+        # Отправляем хардкодное сообщение вместо AI-генерации
+        invite_message = (
+            "📩 Вы выбрали волну для отправки шаблона.\n"
+            "✍️ Напишите свои пожелания по содержанию письма, и мы подготовим шаблон."
+        )
 
-            await callback.message.reply(invite_message)
-
-        except Exception as e:
-            logger.error(f"Ошибка при генерации приглашения: {e}", exc_info=True)
-            await callback.message.reply("Введите пожелания для генерации шаблона.")  # fallback сообщение
-
+        await callback.message.reply(invite_message)
         await state.set_state(TemplateStates.waiting_for_description)
 
     except Exception as e:
@@ -201,24 +196,33 @@ async def handle_user_input(message: types.Message, state: FSMContext):
     db = SessionLocal()
 
     try:
+        logger.info(f"📩 [User {message.from_user.id}] Получен ввод для генерации шаблона: {user_input}")
+
         state_data = await state.get_data()
+        logger.debug(f"🔍 [User {message.from_user.id}] Данные состояния перед обработкой: {state_data}")
+
         company_id = state_data.get("company_id")
         content_plan_id = state_data.get("content_plan_id")
 
         if not company_id:
+            logger.warning(f"⚠️ [User {message.from_user.id}] Company ID отсутствует в FSM, пытаемся найти по chat_id={chat_id}")
             company = db.query(Company).filter_by(chat_id=chat_id).first()
             if company:
                 company_id = company.company_id
                 await state.update_data(company_id=company_id)
+                logger.info(f"✅ [User {message.from_user.id}] Найден company_id={company_id} и сохранен в FSM.")
             else:
+                logger.error(f"❌ [User {message.from_user.id}] Ошибка: компания не найдена.")
                 await message.reply("Ошибка: компания не найдена.")
                 return
 
         if not content_plan_id:
+            logger.error(f"❌ [User {message.from_user.id}] Ошибка: контент-план не найден в FSM.")
             await message.reply("Ошибка: не удалось найти контент-план.")
             return
 
         # Запрашиваем данные компании и контент-плана
+        logger.debug(f"🔍 [User {message.from_user.id}] Запрос данных для company_id={company_id}, content_plan_id={content_plan_id}")
         company_data = (
             db.query(CompanyInfo, ContentPlan.description)
             .join(ContentPlan, CompanyInfo.company_id == ContentPlan.company_id)
@@ -227,10 +231,12 @@ async def handle_user_input(message: types.Message, state: FSMContext):
         )
 
         if not company_data:
+            logger.error(f"❌ [User {message.from_user.id}] Ошибка: данные компании или контент-план не найдены.")
             await message.reply("Ошибка: не удалось найти данные компании или контент-план.")
             return
 
         company_info, content_plan_desc = company_data
+        logger.info(f"✅ [User {message.from_user.id}] Данные компании успешно загружены.")
 
         # Собираем данные для модели
         company_details = {
@@ -255,28 +261,37 @@ async def handle_user_input(message: types.Message, state: FSMContext):
         }
         company_details = {k: v for k, v in company_details.items() if v}  # Удаляем пустые поля
 
+        logger.debug(f"📄 [User {message.from_user.id}] Подготовленные данные для генерации: {company_details}")
+
         # Генерируем промпт
         prompt = generate_email_prompt(company_details)
+        logger.debug(f"📜 [User {message.from_user.id}] Сгенерированный промпт: {prompt}")
 
         # Отправляем запрос в модель
         template_response = send_to_model(prompt)
-
         if not template_response:
+            logger.error(f"❌ [User {message.from_user.id}] Ошибка при генерации шаблона.")
             await message.reply("Ошибка при генерации шаблона. Попробуйте позже.")
             return
 
         await state.update_data(template_content=template_response)
+        logger.info(f"✅ [User {message.from_user.id}] Шаблон успешно сгенерирован.")
 
         # Отправляем пользователю сгенерированный шаблон
         await message.reply(f"Сгенерированный шаблон:\n\n{template_response}\n\nПодтвердите? (да/нет)")
         await state.set_state(TemplateStates.waiting_for_confirmation)
 
+    except SQLAlchemyError as db_error:
+        logger.error(f"❌ [User {message.from_user.id}] Ошибка БД при генерации шаблона: {db_error}", exc_info=True)
+        await message.reply("Ошибка базы данных. Попробуйте позже.")
+
     except Exception as e:
-        logger.error(f"Ошибка при генерации шаблона: {e}", exc_info=True)
+        logger.error(f"❌ [User {message.from_user.id}] Ошибка при генерации шаблона: {e}", exc_info=True)
         await message.reply("Произошла ошибка при генерации шаблона. Попробуйте позже.")
 
     finally:
         db.close()
+        logger.debug(f"🔚 [User {message.from_user.id}] Сессия с БД закрыта.")
 
 
 @router.message(TemplateStates.waiting_for_confirmation)

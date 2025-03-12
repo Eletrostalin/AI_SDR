@@ -184,9 +184,8 @@ async def confirm_brief(message: types.Message, state: FSMContext):
     success = save_company_info(company_id, brief_data)
 
     if success:
-        await message.answer("✅ Данные загружены и сохранены в базу.")
-        await state.set_state(OnboardingState.waiting_for_email_connections)
-        await message.answer("📧 Теперь загрузите файл с настройками для email-подключений.")
+        await message.answer("Готово! ✅ Данные загружены. Теперь я знаю ключевые моменты о Вашей компании и могу персонализировать рассылки.")
+        await handle_email_table_request(message, state)  # Переход к обработке email-таблицы
     else:
         await message.answer("❌ Ошибка при сохранении данных. Попробуйте позже.")
 

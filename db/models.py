@@ -25,7 +25,15 @@ class EmailConnections(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     company_id = Column(Integer, ForeignKey("companies.company_id", ondelete="CASCADE"), nullable=False)
     chat_id = Column(BigInteger, nullable=False)
-    connection_data = Column(JSONB, nullable=False)
+
+    # Новые поля вместо JSONB connection_data
+    login = Column(String, nullable=False)
+    password = Column(String, nullable=False)  # Можно зашифровать перед сохранением
+    smtp_server = Column(String, nullable=False)
+    smtp_port = Column(Integer, nullable=False)
+    imap_server = Column(String, nullable=False)
+    imap_port = Column(Integer, nullable=False)
+
     company = relationship("Company", back_populates="email_connections")
 
 class ChatThread(Base):

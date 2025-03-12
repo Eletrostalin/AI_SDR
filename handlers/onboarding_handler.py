@@ -7,6 +7,7 @@ import pandas as pd
 import io
 
 from db.db import SessionLocal
+from db.db_company import save_company_info
 from db.models import CompanyInfo, User, EmailConnections
 from handlers.email_table_handler import handle_email_table_request
 from states.states import OnboardingState
@@ -20,7 +21,7 @@ router = Router()
 COLUMN_MAPPING = {
     "Название компании": "company_name",
     "Миссия компании": "company_mission",
-    "Ценности компании": "company_values",
+    "Информация о компании (миссия и ценности)": "company_values",
     "Сфера деятельности": "business_sector",
     "Адреса офисов и график работы": "office_addresses_and_hours",
     "Ссылки на ресурсы": "resource_links",
@@ -38,21 +39,35 @@ COLUMN_MAPPING = {
 }
 
 
-@router.callback_query(lambda c: c.data in ["skip_missing_fields", "fill_missing_fields"], OnboardingState.missing_fields)
+@router.callback_query(lambda c: c.data in ["skip_missing_fields", "fill_missing_fields"],
+                       OnboardingState.missing_fields)
 async def handle_missing_fields_callback(call: types.CallbackQuery, state: FSMContext):
     """
-    Обрабатывает нажатие на кнопки "Пропустить" и "Заполнить".
+    Обрабатывает выбор пользователя: пропустить или загрузить исправленный файл.
     """
-    await call.answer()  # Закрываем всплывающее уведомление
+    await call.answer()
 
     if call.data == "skip_missing_fields":
-        logger.info("✅ Пользователь решил пропустить недостающие поля.")
+        logger.info("✅ Пользователь пропустил недостающие поля.")
+
+        # Получаем сохраненные данные из состояния
+        data = await state.get_data()
+        company_id = data.get("company_id")
+        brief_data = data.get("brief_data", {})
+
+        # Если нет данных, не вызываем confirm_brief(), а просим загрузить заново
+        if not company_id or not brief_data:
+            logger.warning("❌ Ошибка! Данные не были загружены, но пользователь решил пропустить.")
+            await call.message.answer("❌ Ошибка! Данные отсутствуют. Попробуйте загрузить файл заново.")
+            await state.set_state(OnboardingState.waiting_for_brief)
+            return
+
+        # Очищаем недостающие поля и подтверждаем данные
         await state.update_data(missing_fields=[])
-        await state.set_state(OnboardingState.confirmation)
         await confirm_brief(call.message, state)
 
     elif call.data == "fill_missing_fields":
-        logger.info("🔄 Пользователь хочет загрузить исправленный файл.")
+        logger.info("🔄 Пользователь загружает исправленный файл.")
         await state.set_state(OnboardingState.waiting_for_brief)
         await call.message.answer("🔄 Пожалуйста, загрузите исправленный файл с недостающими данными.")
 
@@ -60,31 +75,23 @@ async def handle_missing_fields_callback(call: types.CallbackQuery, state: FSMCo
 @router.message(OnboardingState.waiting_for_brief)
 async def handle_brief_upload(message: types.Message, state: FSMContext):
     """
-    Обработка загруженного Excel-файла с брифом.
+    Обрабатывает загрузку файла и предлагает пользователю подтвердить или загрузить исправленный файл.
     """
-    current_state = await state.get_state()
-    logger.info(f"Обработчик загрузки брифа. Текущее состояние: {current_state}")
-    await message.answer("✅ Файл загружен! Начинаю обработку...")
+    logger.info("Обработчик загрузки брифа запущен.")
 
-    if not message.document:
-        await message.answer("Пожалуйста, загрузите файл в формате .xlsx.")
+    if not message.document or not message.document.file_name.endswith(".xlsx"):
+        await message.answer("❌ Ошибка! Пожалуйста, загрузите файл в формате .xlsx.")
         return
 
-    if not message.document.file_name.endswith(".xlsx"):
-        await message.answer("Ошибка! Файл должен быть в формате .xlsx.")
-        return
-
-        # Достаем `company_id` по `telegram_id` отправителя
     db: Session = SessionLocal()
     user = db.query(User).filter_by(telegram_id=str(message.from_user.id)).first()
     db.close()
 
     if not user or not user.company_id:
-        logger.error(f"❌ Ошибка! Не найден company_id для пользователя {message.from_user.id}.")
-        await message.answer("❌ Ошибка! Вы не привязаны к компании. Попросите администратора добавить вас.")
+        await message.answer("❌ Ошибка! Вы не привязаны к компании. Обратитесь к администратору.")
         return
 
-    company_id = user.company_id  # ✅ Теперь у нас есть корректный company_id
+    company_id = user.company_id  # ✅ company_id получен
 
     file_id = message.document.file_id
     file = await message.bot.get_file(file_id)
@@ -96,7 +103,7 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
         company_name = str(df.iloc[1, 1]).strip()
 
         if not company_name:
-            await message.answer("❌ Ошибка! В файле отсутствует название компании. Проверьте и загрузите заново.")
+            await message.answer("❌ В файле отсутствует название компании. Проверьте и загрузите заново.")
             return
 
         brief_data = {"company_name": company_name}
@@ -110,128 +117,78 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
             if key and value:
                 brief_data[key] = value
 
-        logger.info(f"Исходные данные перед маппингом: {brief_data}")
+        logger.info(f"Исходные данные: {brief_data}")
 
         renamed_data = {COLUMN_MAPPING.get(k, k): v for k, v in brief_data.items()}
-        data = await state.get_data()
-        old_missing_fields = set(data.get("missing_fields", []))
-        new_missing_fields = {k for k in original_headers if k not in brief_data and k.lower() != "nan"}
+        missing_fields = {k for k in original_headers if k not in brief_data and k.lower() != "nan"}
 
-        if new_missing_fields:
-            logger.warning(f"⚠️ В файле всё ещё не хватает данных: {new_missing_fields}")
-
-            await state.update_data(brief_data=renamed_data, missing_fields=list(new_missing_fields))
+        if missing_fields:
+            await state.update_data(brief_data=renamed_data, missing_fields=list(missing_fields))
             await state.set_state(OnboardingState.missing_fields)
+            await state.update_data(company_id=company_id, brief_data=renamed_data, missing_fields=[])
 
-            # ✅ Используем InlineKeyboardMarkup вместо ReplyKeyboardMarkup
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text="✅ Пропустить", callback_data="skip_missing_fields")],
-                    [InlineKeyboardButton(text="🔄 Заполнить", callback_data="fill_missing_fields")]
+                    [InlineKeyboardButton(text="🔄 Перезагрузить", callback_data="fill_missing_fields")]
                 ]
             )
 
             await message.answer(
-                f"⚠️ В файле всё ещё не хватает следующих данных:\n\n{', '.join(new_missing_fields)}\n\n"
-                "Выберите действие:",
+                f"⚠️ В файле не хватает данных:\n\n{', '.join(missing_fields)}\n\nВыберите действие:",
                 reply_markup=keyboard
             )
             return
+        await state.update_data(missing_fields=[])
 
-        await state.update_data(company_id=company_id, brief_data=renamed_data, missing_fields=[])
-        await state.set_state(OnboardingState.processing_brief)
-        await process_brief(message, state)
+        await confirm_brief(message, state)
     except Exception as e:
         logger.error(f"Ошибка при обработке файла: {e}", exc_info=True)
         await message.answer("❌ Ошибка при обработке файла. Проверьте его и попробуйте снова.")
 
 
-async def process_brief(message: types.Message, state: FSMContext):
-    """
-    Обрабатывает данные брифа и сохраняет в базу данных.
-    """
-    try:
-        data = await state.get_data()
-        logger.info(f"Полученные данные из FSM перед обработкой: {data}")
-
-        company_id = data.get("company_id")
-        brief_data = data.get("brief_data", {})
-
-        if not company_id:
-            await message.answer("❌ Ошибка! Не найден company_id. Попробуйте загрузить файл заново.")
-            await state.set_state(OnboardingState.waiting_for_brief)
-            return
-
-        if not brief_data:
-            await message.answer("❌ Ошибка! Данные брифа не найдены. Попробуйте загрузить файл заново.")
-            await state.set_state(OnboardingState.waiting_for_brief)
-            return
-
-        missing_fields = data.get("missing_fields", [])
-
-        if missing_fields:
-            logger.warning(f"В файле всё ещё не хватает данных: {missing_fields}")
-            await message.answer(
-                f"⚠️ Всё ещё не хватает следующих данных: {', '.join(missing_fields)}\n\n"
-                "Загрузите новый файл или напишите ‘Пропустить’, если хотите продолжить без них."
-            )
-            await state.set_state(OnboardingState.missing_fields)
-            return
-
-        logger.info(f"Полный словарь после маппинга: {brief_data}")
-        brief_data = {str(k): v for k, v in brief_data.items()}
-
-        company_name = brief_data.get("company_name", "").strip()
-        if not company_name:
-            await message.answer("❌ Ошибка! Название компании отсутствует. Проверьте файл и загрузите заново.")
-            await state.set_state(OnboardingState.waiting_for_brief)
-            return
-
-        logger.info(f"Данные перед сохранением в БД: {brief_data}")
-        allowed_keys = set(COLUMN_MAPPING.values())
-        filtered_data = {k: v for k, v in brief_data.items() if k in allowed_keys}
-        removed_keys = set(brief_data.keys()) - set(filtered_data.keys())
-        logger.info(f"Удалены неиспользуемые ключи: {removed_keys}")
-
-        db: Session = SessionLocal()
-        existing_info = db.query(CompanyInfo).filter_by(company_id=company_id).first()
-
-        if existing_info:
-            logger.info(f"Обновляем данные компании ID: {company_id}")
-            for key, value in filtered_data.items():
-                setattr(existing_info, key, value)
-            existing_info.updated_at = datetime.utcnow()
-        else:
-            logger.info(f"Создаём новую запись для компании ID: {company_id}")
-            filtered_data["company_id"] = company_id
-            filtered_data["created_at"] = datetime.utcnow()
-            filtered_data["updated_at"] = datetime.utcnow()
-            new_info = CompanyInfo(**filtered_data)
-            db.add(new_info)
-
-        db.commit()
-        db.close()
-
-        logger.info(f"Сохранённый бриф: {filtered_data}")
-        await state.set_state(OnboardingState.confirmation)
-        await confirm_brief(message, state)
-    except Exception as e:
-        logger.error(f"Ошибка при сохранении данных брифа: {e}", exc_info=True)
-        await message.answer("❌ Ошибка при обработке данных. Проверьте файл и попробуйте снова.")
-
-
 async def confirm_brief(message: types.Message, state: FSMContext):
     """
-    Подтверждает успешную обработку данных и запускает следующий этап.
+    Подтверждает данные и сохраняет их в базу.
+    Если company_id отсутствует в состоянии, повторно извлекает его из базы по chat_id.
     """
-    await message.answer(
-        "✅ Готово! Данные загружены. Теперь я знаю ключевые моменты о Вашей компании и могу персонализировать рассылки."
-    )
-    await state.set_state(OnboardingState.waiting_for_email_connections)
-    await message.answer(
-        "📧 Теперь загрузите файл с данными для email-подключений. Он должен содержать настройки SMTP и IMAP.",
-    )
+    data = await state.get_data()
+    company_id = data.get("company_id")
+    brief_data = data.get("brief_data", {})
 
+    # Если company_id отсутствует, пробуем получить его из базы
+    if not company_id:
+        logger.warning("🔄 company_id отсутствует в состоянии. Пытаемся получить из базы.")
+
+        db: Session = SessionLocal()
+        try:
+            user = db.query(User).filter_by(telegram_id=str(message.from_user.id)).first()
+            if user and user.company_id:
+                company_id = user.company_id
+                logger.info(f"✅ Повторно получен company_id: {company_id}")
+            else:
+                logger.error(f"❌ Не удалось найти company_id для telegram_id {message.from_user.id}")
+                await message.answer("❌ Ошибка! Данные компании отсутствуют. Попробуйте загрузить файл заново.")
+                await state.set_state(OnboardingState.waiting_for_brief)
+                return
+        finally:
+            db.close()
+
+    # Проверяем, есть ли данные для сохранения
+    if not brief_data:
+        logger.error("❌ Ошибка! Данные компании отсутствуют перед сохранением в БД.")
+        await message.answer("❌ Ошибка! Данные отсутствуют. Попробуйте загрузить файл заново.")
+        await state.set_state(OnboardingState.waiting_for_brief)
+        return
+
+    success = save_company_info(company_id, brief_data)
+
+    if success:
+        await message.answer("✅ Данные загружены и сохранены в базу.")
+        await state.set_state(OnboardingState.waiting_for_email_connections)
+        await message.answer("📧 Теперь загрузите файл с настройками для email-подключений.")
+    else:
+        await message.answer("❌ Ошибка при сохранении данных. Попробуйте позже.")
 
 
 @router.message(OnboardingState.missing_fields)
@@ -259,104 +216,3 @@ async def handle_missing_fields_response(message: types.Message, state: FSMConte
 
     else:
         await message.answer("❌ Неправильный ответ. Напишите **'Пропустить'** или **'Заполнить'**.")
-
-
-@router.message(OnboardingState.waiting_for_email_connections)
-async def handle_email_connections_upload(message: types.Message, state: FSMContext):
-    """
-    Обработка загруженного файла с email-подключениями.
-    """
-    if not message.document:
-        await message.answer("❌ Ошибка! Загрузите файл в формате .xlsx.")
-        return
-
-    if not message.document.file_name.endswith(".xlsx"):
-        await message.answer("❌ Ошибка! Файл должен быть в формате .xlsx.")
-        return
-
-    db: Session = SessionLocal()
-    user = db.query(User).filter_by(telegram_id=str(message.from_user.id)).first()
-    db.close()
-
-    if not user or not user.company_id:
-        logger.error(f"❌ Ошибка! Не найден company_id для пользователя {message.from_user.id}.")
-        await message.answer("❌ Ошибка! Вы не привязаны к компании. Попросите администратора добавить вас.")
-        return
-
-    company_id = user.company_id
-
-    file_id = message.document.file_id
-    file = await message.bot.get_file(file_id)
-    file_stream = await message.bot.download_file(file.file_path)
-
-    try:
-        df = pd.read_excel(io.BytesIO(file_stream.read()), header=None)
-
-
-        if df.empty:
-            await message.answer("❌ Файл пуст. Проверьте его содержимое.")
-            return
-
-        # ✅ Преобразуем данные в словарь
-        email_connections = parse_email_accounts(df)
-
-        if not email_connections:
-            await message.answer("❌ Ошибка! Не удалось извлечь данные из файла.")
-            return
-
-        logger.info(f"📧 Полученные email-подключения: {email_connections}")
-
-        # ✅ Сохраняем в БД
-        db = SessionLocal()
-        new_connection = EmailConnections(
-            chat_id=message.chat.id,
-            company_id=company_id,
-            connection_data=email_connections
-        )
-        db.add(new_connection)
-        db.commit()
-        db.close()
-
-        logger.info(f"✅ Email-подключения сохранены для компании ID: {company_id}")
-
-        logger.info("Состояние онбординга очищено. Переход к следующему этапу.")
-        await state.clear()
-        await handle_email_table_request(message, state)
-
-    except Exception as e:
-        logger.error(f"❌ Ошибка при обработке email-подключений: {e}", exc_info=True)
-        await message.answer("❌ Ошибка при обработке файла. Проверьте его содержимое и попробуйте снова.")
-
-
-def parse_email_accounts(df: pd.DataFrame) -> dict:
-    """
-    Разбирает DataFrame с настройками почты в JSON-структуру.
-    """
-    email_accounts = {}
-
-    current_email = None
-    for i in range(len(df)):
-        row = df.iloc[i, :].dropna().tolist()
-        if not row:
-            continue
-
-        first_cell = str(row[0]).strip().lower()
-
-        if "почта" in first_cell:  # Начало нового блока почты
-            current_email = f"email_{len(email_accounts) + 1}"
-            email_accounts[current_email] = {}
-        elif current_email:
-            if "логин" in first_cell:
-                email_accounts[current_email]["login"] = row[1] if len(row) > 1 else None
-            elif "проль" in first_cell:
-                email_accounts[current_email]["password"] = row[1] if len(row) > 1 else None
-            elif "smtp-сервер" in first_cell:
-                email_accounts[current_email]["smtp_server"] = row[1] if len(row) > 1 else None
-            elif "порт smtp" in first_cell:
-                email_accounts[current_email]["smtp_port"] = int(row[1]) if len(row) > 1 else None
-            elif "imap-сервер" in first_cell:
-                email_accounts[current_email]["imap_server"] = row[1] if len(row) > 1 else None
-            elif "порт imap" in first_cell:
-                email_accounts[current_email]["imap_port"] = int(row[1]) if len(row) > 1 else None
-
-    return email_accounts

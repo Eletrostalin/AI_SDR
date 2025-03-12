@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 
 from db.db import SessionLocal
@@ -50,54 +52,34 @@ def get_company_by_campaign(campaign: Campaigns):
         db.close()
 
 
-def save_company_info(db: Session, company_id: int, details: dict) -> CompanyInfo:
-    """
-    Сохраняет или обновляет информацию о компании в таблице CompanyInfo.
-    """
-    company_info = db.query(CompanyInfo).filter_by(company_id=company_id).first()
-    if company_info:
-        company_info.details = details
-    else:
-        company_info = CompanyInfo(
-            company_id=company_id,
-            details=details,
-        )
-        db.add(company_info)
-    db.commit()
-    db.refresh(company_info)
-    return company_info
 
-
-def get_company_info_by_id(company_id: int) -> CompanyInfo | None:
-    """Получает информацию о компании по company_id"""
-    db = SessionLocal()
+def save_company_info(company_id: int, brief_data: dict):
+    """
+    Сохраняет данные компании в базу данных (обновляет или создает новую запись).
+    """
+    db: Session = SessionLocal()
     try:
-        return db.query(CompanyInfo).filter_by(company_id=company_id).first()
+        existing_info = db.query(CompanyInfo).filter_by(company_id=company_id).first()
+
+        if existing_info:
+            logger.info(f"Обновляем данные компании ID: {company_id}")
+            for key, value in brief_data.items():
+                setattr(existing_info, key, value)
+            existing_info.updated_at = datetime.utcnow()
+        else:
+            logger.info(f"Создаем новую запись для компании ID: {company_id}")
+            new_info = CompanyInfo(**brief_data, company_id=company_id, created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+            db.add(new_info)
+
+        db.commit()
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении данных компании: {e}", exc_info=True)
+        db.rollback()
+        return False
     finally:
         db.close()
 
-
-def validate_and_merge_company_info(
-    db: Session, company_id: int, fields_to_add: dict
-) -> dict:
-    """
-    Проверяет существующие данные компании, ищет пересечения ключей, объединяет новые данные.
-
-    :param db: Сессия базы данных.
-    :param company_id: ID компании.
-    :param fields_to_add: Данные для добавления.
-    :return: Новые данные, объединенные с существующими, или выбрасывает исключение.
-    """
-    existing_data = get_company_info_by_company_id(db, company_id) or {}
-    overlapping_keys = set(fields_to_add.keys()) & set(existing_data.keys())
-
-    if overlapping_keys:
-        raise ValueError(
-            f"Поля {', '.join(overlapping_keys)} уже существуют. Обновление невозможно."
-        )
-
-    # Объединяем данные
-    return {**existing_data, **fields_to_add}
+    return True
 
 
 def delete_additional_info(db: Session, company_id: int):

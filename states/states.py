@@ -9,8 +9,6 @@ class OnboardingState(StatesGroup):
     processing_brief = State()
     missing_fields = State()
     confirmation = State()
-    waiting_for_email_connections = State()
-    processing_email_connections = State()
 
 
 class AddCompanyState(StatesGroup):

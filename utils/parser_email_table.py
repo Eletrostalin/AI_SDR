@@ -108,6 +108,9 @@ async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message, 
     # **Обновляем список обязательных колонок**
     REQUIRED_COLUMNS = EMAIL_SEGMENT_COLUMNS + ["file_name"]
 
+    logger.debug(f"📌 REQUIRED_COLUMNS: {REQUIRED_COLUMNS}")
+    logger.debug(f"📌 Фактические колонки в DataFrame перед проверкой: {df.columns.tolist()}")
+
     # Проверяем наличие обязательных колонок
     missing_columns = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing_columns:

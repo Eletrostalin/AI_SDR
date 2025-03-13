@@ -180,24 +180,32 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
     """
     try:
         df = pd.read_excel(file_path)
+        logger.debug(f"📊 Исходные данные (первые 5 строк):\n{df.head()}")
+
         if df.empty:
             await message.reply("❌ Файл пуст или не содержит данных.")
             return False
 
         df = clean_dataframe(df)
+        logger.debug(f"📊 Данные после очистки (первые 5 строк):\n{df.head()}")
+
         if df.empty:
             await message.reply("❌ Файл не содержит значимых данных после очистки. Проверьте его содержимое.")
             return False
 
         user_columns = df.columns.tolist()
-        logger.debug(f"📊 Колонки пользователя: {user_columns}")
+        logger.debug(f"📊 Колонки пользователя перед маппингом: {user_columns}")
 
         mapping = await map_columns(user_columns)
+        logger.debug(f"🎯 Полученный маппинг колонок: {mapping}")
+
         if not mapping:
             await message.reply("❌ Не удалось сопоставить загруженные данные с фиксированными колонками.")
             return False
 
         df.rename(columns=mapping, inplace=True)
+        logger.debug(f"📊 Данные после маппинга (первые 5 строк):\n{df.head()}")
+
         state_data = await state.get_data()
         file_name = state_data.get("file_name")
 
@@ -211,28 +219,39 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
         # 🔹 Фильтруем: оставляем только строки, где email содержит "@"
         if "email" in df.columns:
             total_rows = len(df)
+            logger.debug(f"📊 Количество строк перед фильтрацией email: {total_rows}")
+
             df = df[df["email"].astype(str).str.contains("@", na=False)]
             filtered_out_rows = total_rows - len(df)
 
             if filtered_out_rows > 0:
-                await message.reply(f"⚠️ Исключено {filtered_out_rows} строк без корректного email.")
+                logger.warning(f"⚠️ Исключено {filtered_out_rows} строк без корректного email.")
 
             if df.empty:
                 await message.reply("❌ В загружаемом файле не найдено валидных email-адресов.")
                 return False
 
         df, valid_emails, multi_email_rows, problematic_rows, problematic_values = clean_and_validate_emails(df)
+        logger.debug(f"📊 Данные после валидации email (первые 5 строк):\n{df.head()}")
 
         if valid_emails is None:
-            await message.reply("❌ Ошибка: В загружаемой таблице не найдена колонка e-mail.")
+            await message.reply("❌ Ошибка: В загружаемой таблице не найдена колонка email.")
             return False
 
-        await save_cleaned_data(df, segment_table_name, message, state)
-        return True
+        logger.info(f"📥 Подготовлено {len(df)} строк для сохранения в таблицу {segment_table_name}")
+
+        save_result = await save_cleaned_data(df, segment_table_name, message, state)
+        if save_result:
+            logger.info(f"✅ Данные успешно сохранены в {segment_table_name}")
+        else:
+            logger.error(f"❌ Ошибка при сохранении данных в {segment_table_name}")
+
+        return save_result
 
     except Exception as e:
         logger.error(f"❌ Ошибка при обработке файла {file_path}: {e}", exc_info=True)
-        return False  # Ошибка логируется, но **сообщение пользователю НЕ отправляется**
+        return False
+
 
 @router.callback_query(StateFilter(EmailUploadState.duplicate_email_check))
 async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):

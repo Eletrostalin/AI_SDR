@@ -159,7 +159,7 @@ async def handle_file_upload(message: Message, state: FSMContext):
         is_processed = await process_email_table(file_path, segment_table_name, message, state)
 
         if is_processed:
-            await message.reply(f"✅ Файл обработан успешно и сохранён в таблицу: `{segment_table_name}`.")
+            await message.reply(f"✅ Файл обработан успешно.")
             await ask_about_more_files(message, state)
 
     except Exception as e:

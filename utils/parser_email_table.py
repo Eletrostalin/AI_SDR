@@ -107,21 +107,23 @@ async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message, 
 
     # **Обновляем список обязательных колонок**
     REQUIRED_COLUMNS = EMAIL_SEGMENT_COLUMNS + ["file_name"]
+    MANDATORY_COLUMNS = ["email", "file_name"]  # Обязательные колонки, которые должны быть заполнены
 
     logger.debug(f"📌 REQUIRED_COLUMNS: {REQUIRED_COLUMNS}")
     logger.debug(f"📌 Фактические колонки в DataFrame перед проверкой: {df.columns.tolist()}")
 
-    # Проверяем наличие обязательных колонок
-    missing_columns = [col for col in REQUIRED_COLUMNS if col not in df.columns]
-    if missing_columns:
-        await message.reply("⚠️ Некоторые обязательные колонки отсутствуют. Проверьте загруженный файл.")
+    # Проверяем, есть ли обязательные колонки
+    missing_mandatory = [col for col in MANDATORY_COLUMNS if col not in df.columns]
+    if missing_mandatory:
+        await message.reply(f"⚠️ Отсутствуют обязательные колонки: {', '.join(missing_mandatory)}. Проверьте загруженный файл.")
         return False
 
-    # Фильтруем DataFrame, оставляя только необходимые колонки
-    df = df[[col for col in df.columns if col in REQUIRED_COLUMNS]]
-    if df.empty:
-        await message.reply("❌ В обработанном файле отсутствуют данные после фильтрации.")
-        return False
+    # **Добавляем отсутствующие колонки из REQUIRED_COLUMNS и заполняем их None**
+    for col in REQUIRED_COLUMNS:
+        if col not in df.columns:
+            df[col] = None  # Заполняем None, так как пользователь не загрузил эти данные
+
+    logger.debug(f"📌 Итоговые колонки после добавления недостающих: {df.columns.tolist()}")
 
     # Проверяем, существует ли таблица
     if not inspect(engine).has_table(segment_table_name):

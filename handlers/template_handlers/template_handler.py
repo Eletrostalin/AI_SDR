@@ -222,10 +222,10 @@ async def handle_user_input(message: types.Message, state: FSMContext):
             return
 
         # Запрашиваем данные компании и контент-плана
-        logger.debug(f"🔍 [User {message.from_user.id}] Запрос данных для company_id={company_id}, content_plan_id={content_plan_id}")
         company_data = (
             db.query(CompanyInfo, ContentPlan.description)
-            .join(ContentPlan, CompanyInfo.company_id == ContentPlan.company_id)
+            .join(Company, CompanyInfo.company_id == Company.company_id)
+            .join(ContentPlan, Company.company_id == ContentPlan.company_id)
             .filter(CompanyInfo.company_id == company_id, ContentPlan.content_plan_id == content_plan_id)
             .first()
         )

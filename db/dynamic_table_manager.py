@@ -30,7 +30,7 @@ def create_dynamic_email_table(engine, table_name: str) -> None:
     :param table_name: Имя таблицы, которая должна быть создана.
     """
     try:
-        metadata = MetaData(bind=engine)  # Используем привязанный metadata
+        metadata = MetaData()  # Используем привязанный metadata
         inspector = inspect(engine)
 
         existing_tables = inspector.get_table_names()

@@ -1,25 +1,26 @@
-from sqlalchemy import MetaData, Table, Column, Integer, String, DateTime, inspect
+from sqlalchemy import MetaData, Table, Column, Integer, String, inspect
 from sqlalchemy.exc import ProgrammingError
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Колонки, которые используются в динамических таблицах
+# Определение динамических колонок в виде списка кортежей (имя, тип)
 DYNAMIC_EMAIL_TABLE_COLUMNS = [
-    Column("file_name", String, nullable=True),
-    Column("name", String, nullable=True),
-    Column("region", String, nullable=True),
-    Column("msp_registry", String, nullable=True),
-    Column("director_name", String, nullable=True),
-    Column("director_position", String, nullable=True),
-    Column("phone_number", String, nullable=True),
-    Column("email", String, nullable=True),
-    Column("website", String, nullable=True),
-    Column("primary_activity", String, nullable=True),
-    Column("revenue", String, nullable=True),
-    Column("employee_count", String, nullable=True),
-    Column("branch_count", String, nullable=True)
+    ("file_name", String),
+    ("name", String),
+    ("region", String),
+    ("msp_registry", String),
+    ("director_name", String),
+    ("director_position", String),
+    ("phone_number", String),
+    ("email", String),
+    ("website", String),
+    ("primary_activity", String),
+    ("revenue", String),
+    ("employee_count", String),
+    ("branch_count", String)
 ]
+
 
 def create_dynamic_email_table(engine, table_name: str) -> None:
     """
@@ -29,25 +30,26 @@ def create_dynamic_email_table(engine, table_name: str) -> None:
     :param table_name: Имя таблицы, которая должна быть создана.
     """
     try:
-        metadata = MetaData()
-
-        # Определение структуры таблицы
-        table = Table(
-            table_name,
-            metadata,
-            Column("id", Integer, primary_key=True, autoincrement=True),
-            *DYNAMIC_EMAIL_TABLE_COLUMNS,
-        )
-
-        logger.debug(f"📌 Проверяем существование таблицы '{table_name}'")
-
-        # Проверяем существование таблицы
+        metadata = MetaData(bind=engine)  # Используем привязанный metadata
         inspector = inspect(engine)
-        if inspector.has_table(table_name):
+
+        existing_tables = inspector.get_table_names()
+        logger.debug(f"📋 Существующие таблицы: {existing_tables}")
+
+        if table_name in existing_tables:
             logger.warning(f"⚠️ Таблица '{table_name}' уже существует. Пропускаем создание.")
             return
 
+        logger.debug(f"📌 Генерируем колонки для таблицы '{table_name}'")
+
+        # Создаём новые объекты `Column()` для каждой таблицы, чтобы избежать конфликта
+        dynamic_columns = [Column("id", Integer, primary_key=True, autoincrement=True)] + [
+            Column(name, col_type, nullable=True) for name, col_type in DYNAMIC_EMAIL_TABLE_COLUMNS
+        ]
+
+        table = Table(table_name, metadata, *dynamic_columns)
         logger.debug(f"📌 Создаём таблицу '{table_name}' с колонками: {[col.name for col in table.columns]}")
+
         metadata.create_all(engine, tables=[table])
 
         logger.info(f"✅ Таблица '{table_name}' успешно создана.")

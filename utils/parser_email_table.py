@@ -29,27 +29,36 @@ async def map_columns(user_columns: list) -> dict:
 
     prompt = generate_column_mapping_prompt(user_columns)
 
-    # Добавляем логирование перед отправкой в OpenAI
-    logger.debug(
-        f"📤 Данные, отправляемые в модель: {json.dumps({'messages': [{'role': 'user', 'content': prompt}]}, indent=2, ensure_ascii=False)}")
+    logger.debug(f"📤 Данные, отправляемые в модель: {json.dumps({'messages': [{'role': 'user', 'content': prompt}]}, indent=2, ensure_ascii=False)}")
 
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}]
     )
 
-    mapping = json.loads(response.choices[0].message.content.strip())
-    logger.debug(f"📩 Ответ OpenAI перед парсингом: {response}")
+    logger.debug(f"📩 Полный ответ от OpenAI перед обработкой: {response}")
+
+    # Получаем сырое содержимое ответа
+    raw_response = response.choices[0].message.content.strip() if response.choices else ""
+
+    # Если ответ пустой — ошибка
+    if not raw_response:
+        logger.error("❌ Ошибка: пустой ответ от OpenAI API. Проверь параметры запроса.")
+        return {}
+
+    # Проверяем, есть ли Markdown-обёртка, и удаляем её только если она есть
+    if raw_response.startswith("```json") and raw_response.endswith("```"):
+        cleaned_response = re.sub(r"^```json\s*|\s*```$", "", raw_response).strip()
+    else:
+        cleaned_response = raw_response  # Оставляем без изменений, если обёртки нет
+
+    try:
+        mapping = json.loads(cleaned_response)
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Ошибка декодирования JSON: {e}. Оригинальный ответ: {raw_response}")
+        return {}
 
     logger.debug(f"🔄 Полученный маппинг: {mapping}")
-
-    # Проверяем, содержит ли email-колонка "email" в названии
-    email_column = mapping.get("email", None)
-    if email_column and not any(keyword in email_column.lower() for keyword in ["email", "почта", "mail"]):
-        logger.warning(f"⚠️ Колонка '{email_column}' была ошибочно назначена как email!")
-        return None  # Прерываем маппинг
-
-
 
     return mapping if mapping and any(mapping.values()) else None
 

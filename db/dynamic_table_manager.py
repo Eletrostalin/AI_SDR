@@ -30,7 +30,8 @@ def create_dynamic_email_table(engine, table_name: str) -> None:
     """
     try:
         metadata = MetaData()
-        # Определение таблицы
+
+        # Определение структуры таблицы
         table = Table(
             table_name,
             metadata,
@@ -38,14 +39,19 @@ def create_dynamic_email_table(engine, table_name: str) -> None:
             *DYNAMIC_EMAIL_TABLE_COLUMNS,
         )
 
+        logger.debug(f"📌 Проверяем существование таблицы '{table_name}'")
+
         # Проверяем существование таблицы
         inspector = inspect(engine)
-        if not inspector.has_table(table_name):
-            metadata.create_all(engine, tables=[table])
-            logger.info(f"Таблица '{table_name}' успешно создана.")
-        else:
-            logger.info(f"Таблица '{table_name}' уже существует.")
+        if inspector.has_table(table_name):
+            logger.warning(f"⚠️ Таблица '{table_name}' уже существует. Пропускаем создание.")
+            return
+
+        logger.debug(f"📌 Создаём таблицу '{table_name}' с колонками: {[col.name for col in table.columns]}")
+        metadata.create_all(engine, tables=[table])
+
+        logger.info(f"✅ Таблица '{table_name}' успешно создана.")
     except ProgrammingError as e:
-        logger.error(f"Ошибка при создании таблицы '{table_name}': {e}")
+        logger.error(f"❌ Ошибка при создании таблицы '{table_name}': {e}", exc_info=True)
     except Exception as e:
-        logger.error(f"Непредвиденная ошибка при создании таблицы '{table_name}': {e}")
+        logger.error(f"❌ Непредвиденная ошибка при создании таблицы '{table_name}': {e}", exc_info=True)

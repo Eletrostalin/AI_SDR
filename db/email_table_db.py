@@ -60,18 +60,24 @@ def save_data_to_db(data: list, table_name: str, db: Session):
     :return: True, если данные успешно сохранены, иначе False.
     """
     try:
+        if not data:
+            logger.warning(f"⚠️ Пустой список данных передан для сохранения в {table_name}. Операция пропущена.")
+            return False
+
         metadata = MetaData()
         table = Table(table_name, metadata, autoload_with=db.bind)
 
-        stmt = insert(table).values(data)
+        logger.debug(f"📌 Подготовка данных для вставки в {table_name}: {data[:5]} (показаны первые 5 записей)")
+        logger.debug(f"📌 Выполняется SQL-запрос на вставку {len(data)} записей в {table_name}")
 
+        stmt = insert(table).values(data)
         db.execute(stmt)
         db.commit()
 
-        logger.info(f"Данные успешно сохранены в таблицу {table_name}.")
+        logger.info(f"✅ Данные успешно сохранены в таблицу {table_name}.")
         return True
     except Exception as e:
-        logger.error(f"Ошибка при сохранении данных в таблицу {table_name}: {e}", exc_info=True)
+        logger.error(f"❌ Ошибка при сохранении данных в {table_name}: {e}", exc_info=True)
         db.rollback()
         return False
 

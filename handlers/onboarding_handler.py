@@ -39,6 +39,7 @@ COLUMN_MAPPING = {
 }
 
 
+
 @router.callback_query(lambda c: c.data in ["skip_missing_fields", "fill_missing_fields"],
                        OnboardingState.missing_fields)
 async def handle_missing_fields_callback(call: types.CallbackQuery, state: FSMContext):
@@ -77,7 +78,7 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
     """
     Обрабатывает загрузку файла и предлагает пользователю подтвердить или загрузить исправленный файл.
     """
-    logger.info("Обработчик загрузки брифа запущен.")
+    logger.info("📥 Обработчик загрузки брифа запущен.")
 
     if not message.document or not message.document.file_name.endswith(".xlsx"):
         await message.answer("❌ Ошибка! Пожалуйста, загрузите файл в формате .xlsx.")
@@ -92,6 +93,7 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
         return
 
     company_id = user.company_id  # ✅ company_id получен
+    logger.debug(f"🔹 Найден company_id: {company_id}")
 
     file_id = message.document.file_id
     file = await message.bot.get_file(file_id)
@@ -117,15 +119,18 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
             if key and value:
                 brief_data[key] = value
 
-        logger.info(f"Исходные данные: {brief_data}")
+        logger.info(f"📊 Исходные данные из файла: {brief_data}")
 
         renamed_data = {COLUMN_MAPPING.get(k, k): v for k, v in brief_data.items()}
         missing_fields = {k for k in original_headers if k not in brief_data and k.lower() != "nan"}
 
+        # 🔹 Сохранение данных в FSMContext
+        await state.update_data(brief_data=renamed_data, company_id=company_id, missing_fields=[])
+        logger.debug(f"✅ Данные успешно сохранены в FSMContext: {await state.get_data()}")
+
         if missing_fields:
-            await state.update_data(brief_data=renamed_data, missing_fields=list(missing_fields))
+            await state.update_data(missing_fields=list(missing_fields))
             await state.set_state(OnboardingState.missing_fields)
-            await state.update_data(company_id=company_id, brief_data=renamed_data, missing_fields=[])
 
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -139,11 +144,13 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
                 reply_markup=keyboard
             )
             return
-        await state.update_data(missing_fields=[])
 
+        # ✅ Переход к подтверждению данных
+        logger.debug("🔄 Передача данных в confirm_brief")
         await confirm_brief(message, state)
+
     except Exception as e:
-        logger.error(f"Ошибка при обработке файла: {e}", exc_info=True)
+        logger.error(f"❌ Ошибка при обработке файла: {e}", exc_info=True)
         await message.answer("❌ Ошибка при обработке файла. Проверьте его и попробуйте снова.")
 
 
@@ -155,6 +162,8 @@ async def confirm_brief(message: types.Message, state: FSMContext):
     data = await state.get_data()
     company_id = data.get("company_id")
     brief_data = data.get("brief_data", {})
+
+    logger.debug(f"📌 Загруженные данные из FSM перед сохранением: {data}")
 
     # Если company_id отсутствует, пробуем получить его из базы
     if not company_id:
@@ -181,12 +190,17 @@ async def confirm_brief(message: types.Message, state: FSMContext):
         await state.set_state(OnboardingState.waiting_for_brief)
         return
 
+    # 🔹 Лог перед сохранением в БД
+    logger.debug(f"🛠 Передаем в БД: company_id={company_id}, brief_data={brief_data}")
+
     success = save_company_info(company_id, brief_data)
 
     if success:
+        logger.info("✅ Данные компании успешно сохранены в БД.")
         await message.answer("Готово! ✅ Данные загружены. Теперь я знаю ключевые моменты о Вашей компании и могу персонализировать рассылки.")
         await handle_email_table_request(message, state)  # Переход к обработке email-таблицы
     else:
+        logger.error("❌ Ошибка при сохранении в БД.")
         await message.answer("❌ Ошибка при сохранении данных. Попробуйте позже.")
 
 

@@ -39,6 +39,7 @@ async def map_columns(user_columns: list) -> dict:
     )
 
     mapping = json.loads(response.choices[0].message.content.strip())
+    logger.debug(f"📩 Ответ OpenAI перед парсингом: {response}")
 
     logger.debug(f"🔄 Полученный маппинг: {mapping}")
 
@@ -47,6 +48,8 @@ async def map_columns(user_columns: list) -> dict:
     if email_column and not any(keyword in email_column.lower() for keyword in ["email", "почта", "mail"]):
         logger.warning(f"⚠️ Колонка '{email_column}' была ошибочно назначена как email!")
         return None  # Прерываем маппинг
+
+
 
     return mapping if mapping and any(mapping.values()) else None
 

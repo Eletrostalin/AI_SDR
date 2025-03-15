@@ -124,6 +124,11 @@ async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message, 
     logger.debug(f"📌 REQUIRED_COLUMNS: {REQUIRED_COLUMNS}")
     logger.debug(f"📌 Фактические колонки в DataFrame перед проверкой: {df.columns.tolist()}")
 
+    # **Оставляем только нужные колонки**
+    df = df[[col for col in df.columns if col in REQUIRED_COLUMNS]]
+
+    logger.debug(f"📌 Итоговые колонки после фильтрации: {df.columns.tolist()}")
+
     # Проверяем, есть ли обязательные колонки
     missing_mandatory = [col for col in MANDATORY_COLUMNS if col not in df.columns]
     if missing_mandatory:
@@ -136,6 +141,13 @@ async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message, 
             df[col] = None  # Заполняем None, так как пользователь не загрузил эти данные
 
     logger.debug(f"📌 Итоговые колонки после добавления недостающих: {df.columns.tolist()}")
+
+    # Проверяем, есть ли обязательные колонки
+    missing_mandatory = [col for col in MANDATORY_COLUMNS if col not in df.columns]
+    if missing_mandatory:
+        await message.reply(
+            f"⚠️ Отсутствуют обязательные колонки: {', '.join(missing_mandatory)}. Проверьте загруженный файл.")
+        return False
 
     # Проверяем, существует ли таблица
     if not inspect(engine).has_table(segment_table_name):

@@ -4,7 +4,6 @@ from aiogram import Router
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.sql import text
-from datetime import datetime
 from db.db import SessionLocal
 from db.db_content_plan import create_content_plan, add_wave
 from db.models import User, Campaigns, Company, ChatThread
@@ -12,6 +11,8 @@ from handlers.template_handlers.template_handler import add_template
 from states.states import AddContentPlanState
 from logger import logger
 from utils.utils import send_to_model  # Функция для отправки текста в модель # Импортируем первую функцию модуля шаблонов
+from datetime import datetime, date
+
 
 router = Router()
 
@@ -173,8 +174,17 @@ async def process_send_date(message: Message, state: FSMContext):
     user_input = message.text.strip()
 
     try:
+        # Парсим дату и сравниваем с текущей датой
         send_date = datetime.strptime(user_input, "%d.%m.%Y").date()
+        today = date.today()
+
+        if send_date < today:
+            await message.reply("❌ Ошибка: Дата не может быть в прошлом. Введите новую дату в формате ДД.ММ.ГГГГ.")
+            return  # Не переходим дальше, ожидаем новый ввод
+
         await state.update_data(send_date=send_date.isoformat())  # Сохраняем дату в ISO-формате
+        logger.info(f"✅ Введена дата {send_date} для контент-плана.")
+
     except ValueError:
         await message.reply("⚠️ Некорректный формат даты. Введите в формате ДД.ММ.ГГГГ.")
         return

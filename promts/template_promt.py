@@ -79,5 +79,5 @@ def generate_email_prompt(company_details: dict) -> str:
     Пользователь просит создать шаблон с учетом следующих пожеланий:
     "{company_details.get("user_request")}"
 
-    Сформируй качественный email-шаблон.
+    Сформируй качественный email-шаблон. Subject не нужен, только шаблон письма.
     """

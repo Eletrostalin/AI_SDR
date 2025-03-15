@@ -1,9 +1,11 @@
+import json
+
 import asyncio
 import pandas as pd
 from sqlalchemy.orm import Session
 
 from db import db
-from db.models import Templates, ContentPlan, Waves
+from db.models import Templates, ContentPlan, Waves, Company
 from logger import logger
 from utils.google_doc import append_drafts_to_sheet
 from utils.utils import send_to_model
@@ -25,6 +27,14 @@ async def generate_drafts_for_wave(db_session, df, wave_id):
         return
 
     logger.info(f"🌊 Волна ID {wave.wave_id} найдена. Обработка {len(df)} лидов.")
+
+    company = db_session.query(Company).filter_by(company_id=wave.company_id).first()
+    if not company or not company.google_sheet_id or not company.google_sheet_name:
+        logger.error(f"❌ Ошибка: Не найдены Google-данные компании ID {wave.company_id}. Прерываем генерацию.")
+        return
+
+    logger.info(
+        f"📋 Компания ID {wave.company_id} использует Google Таблицу ID {company.google_sheet_id}, лист {company.google_sheet_name}")
 
     template = db_session.query(Templates).filter_by(wave_id=wave.wave_id).first()
     if not template:
@@ -52,7 +62,7 @@ async def generate_drafts_for_wave(db_session, df, wave_id):
 
         if successful_drafts:
             logger.info(f"✅ Успешно сгенерировано {len(successful_drafts)} черновиков. Отправляем в Google Sheets.")
-            append_drafts_to_sheet(successful_drafts)
+            append_drafts_to_sheet(company.google_sheet_id, company.google_sheet_name, successful_drafts)
         else:
             logger.warning("⚠️ Ни один черновик не был успешно создан в этой партии.")
 
@@ -106,10 +116,14 @@ async def generate_draft_for_lead(template, lead_data, subject, wave_id, descrip
 
     🎯 Задача:
     - Напиши персонализированное письмо для компании {company_name}.
+    
     - Сделай письмо более естественным, добавь упоминание об их деятельности ({primary_activity}).
     - Используй описание контентного плана, чтобы адаптировать текст под цель кампании.
     - Перемешай абзацы, добавь уникальное вступление.
     - Используй разные формулировки, чтобы письма не были однотипными.
+    - Генерируй уникальную тему письма и основной текст.
+    - В ответе верни JSON-объект формата:
+      {{"subject": "<сгенерированная тема>", "text": "<сгенерированный текст>"}}
     Важное замечание!! Если в каких то переменных будет None не используй их в тексте письма.
     """
 
@@ -119,19 +133,25 @@ async def generate_draft_for_lead(template, lead_data, subject, wave_id, descrip
             response = send_to_model(prompt)
             if not response:
                 raise ValueError("Ответ от модели пуст")
-            break
+                # Парсим JSON, который вернула модель
+            generated_data = json.loads(response)
+
+            if "subject" not in generated_data or "text" not in generated_data:
+                raise ValueError("Ответ модели не содержит subject или text")
+
+            break  # Успешная генерация — выходим из цикла
         except Exception as e:
             logger.warning(f"⚠️ Попытка {attempt + 1}: Ошибка генерации для lead_id={lead_id}: {e}")
             if attempt == 2:
                 logger.error(f"❌ Не удалось сгенерировать письмо для lead_id={lead_id}", exc_info=True)
                 return None
-            await asyncio.sleep(2)
+            await asyncio.sleep(2)  # Подождать перед повторной попыткой
 
     return {
         "wave_id": wave_id,
         "lead_id": lead_id,
         "email": email,
         "company_name": company_name,
-        "subject": subject,
-        "text": response.strip()
+        "subject": generated_data["subject"],
+        "text": generated_data["text"]
     }

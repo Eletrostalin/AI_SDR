@@ -55,6 +55,9 @@ class Company(Base):
     status = Column(String, default="active", nullable=False)
     name = Column(String, nullable=True)
 
+    google_sheet_id = Column(String, nullable=True)  # ID Google Таблицы
+    google_sheet_name = Column(String, nullable=True)  # Имя листа в Google Таблице
+
     # Связи
     info = relationship("CompanyInfo", back_populates="company", uselist=False)
     campaigns = relationship("Campaigns", back_populates="company")

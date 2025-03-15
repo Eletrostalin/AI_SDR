@@ -1,7 +1,7 @@
 import gspread
 from google.oauth2.service_account import Credentials
 
-from config import CREDENTIALS_FILE, SCOPES
+from config import CREDENTIALS_FILE, SCOPES, SHEET_NAME, SHEET_ID
 from logger import logger
 import os
 from datetime import datetime
@@ -71,32 +71,46 @@ def create_excel_with_multiple_sheets(data: dict, file_name: str) -> str:
         raise
 
 
-def connect_to_google_sheets(sheet_id: str, sheet_name: str):
+def connect_to_google_sheets():
     """Создает подключение к Google Sheets."""
+    if not SHEET_ID or not SHEET_NAME:
+        logger.error("❌ Ошибка: GOOGLE_SHEET_ID или SHEET_NAME не заданы в config.py")
+        raise ValueError("GOOGLE_SHEET_ID и SHEET_NAME должны быть указаны в config.py")
+
     creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
     client = gspread.authorize(creds)
-    sheet = client.open_by_key(sheet_id).worksheet(sheet_name)
+    sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
     return sheet
 
-def append_drafts_to_sheet(sheet_id: str, sheet_name: str, drafts):
+
+def append_drafts_to_sheet(successful_drafts):
     """
     Добавляет список черновиков в Google Таблицу.
 
-    :param sheet_id: ID Google Таблицы.
-    :param sheet_name: Имя листа.
-    :param drafts: Список черновиков (dict).
+    :param successful_drafts: Список черновиков (dict).
     """
+    if not successful_drafts:
+        logger.warning("⚠️ Нет успешных черновиков для добавления в Google Таблицу.")
+        return
+
     try:
-        sheet = connect_to_google_sheets(sheet_id, sheet_name)
+        sheet = connect_to_google_sheets()
+        if not sheet:
+            logger.error("❌ Ошибка: Не удалось получить объект таблицы.")
+            return
+
+        logger.info(f"📋 Подготовка к записи {len(successful_drafts)} черновиков в Google Таблицу...")
 
         rows = [[
-            draft["lead_id"],   # ✅ Соответствует "id"
-            draft["email"],     # ✅ Соответствует "e-mail получателя"
-            draft["subject"],   # ✅ Соответствует "Тема"
-            draft["text"]       # ✅ Соответствует "текст письма"
-        ] for draft in drafts]
+            draft.get("lead_id", "N/A"),   # ✅ Соответствует "id"
+            draft.get("email", "N/A"),     # ✅ Соответствует "e-mail получателя"
+            draft.get("subject", "N/A"),   # ✅ Соответствует "Тема"
+            draft.get("text", "N/A")       # ✅ Соответствует "Текст письма"
+        ] for draft in successful_drafts]
+
+        logger.debug(f"📄 Данные для записи в таблицу: {rows}")
 
         sheet.append_rows(rows, value_input_option="RAW")
-        logger.info(f"✅ Добавлено {len(rows)} черновиков в Google Таблицу.")
+        logger.info(f"✅ Успешно добавлено {len(rows)} черновиков в Google Таблицу.")
     except Exception as e:
         logger.error(f"❌ Ошибка при записи в Google Sheets: {e}", exc_info=True)

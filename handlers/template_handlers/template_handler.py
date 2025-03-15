@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta, datetime
 
 from aiogram import Router, types
@@ -7,14 +8,15 @@ from aiogram.types import InlineKeyboardButton, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.exc import SQLAlchemyError
 
-from agents.tempate_agent import async_invite_tool
 from db.db import SessionLocal
 from db.models import Templates, Waves, Company, CompanyInfo, ContentPlan, Campaigns, ChatThread
 from promts.template_promt import generate_email_prompt
 from states.states import TemplateStates
 import logging
 
+from handlers.draft_handlers.draft_handler import generate_drafts_for_wave
 from utils.utils import send_to_model
+from utils.wave_shedulers import get_filtered_leads_for_wave
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -346,8 +348,9 @@ async def confirm_template(message: types.Message, state: FSMContext):
         template_content = state_data["template_content"]
         user_request = state_data["user_request"]
 
-        # **Получаем subject из waves**
-        wave = db.query(Waves).filter_by(wave_id=wave_id).first()
+        # **Получаем subject из waves с подгрузкой связанных данных**
+        from sqlalchemy.orm import joinedload
+        wave = db.query(Waves).options(joinedload(Waves.campaign)).filter_by(wave_id=wave_id).first()
         if not wave:
             logger.error(f"❌ [User {user_id}] Ошибка: не удалось найти волну с wave_id={wave_id}")
             await message.reply("Ошибка: не удалось найти волну. Попробуйте снова.")
@@ -383,6 +386,17 @@ async def confirm_template(message: types.Message, state: FSMContext):
         logger.info(f"✅ [User {user_id}] Шаблон сохранён! Subject: {subject}, Волна: {wave_id}")
 
         await message.reply("Шаблон успешно сохранён и привязан к волне!")
+
+        # 🚀 **Запуск генерации черновиков после успешного сохранения шаблона**
+        df = get_filtered_leads_for_wave(db, wave_id)  # Получаем лидов
+        db.close()  # Закрываем сессию перед запуском фоновой задачи
+
+        if not df.empty:
+            logger.info(f"🚀 Запускаем генерацию черновиков для волны {wave_id} после сохранения шаблона...")
+            asyncio.create_task(generate_drafts_for_wave(db, df, wave_id))
+        else:
+            logger.warning(f"⚠️ Нет лидов для волны {wave_id}, генерация черновиков не запущена.")
+
         await state.clear()
 
     except SQLAlchemyError as e:
@@ -391,3 +405,4 @@ async def confirm_template(message: types.Message, state: FSMContext):
 
     finally:
         db.close()
+

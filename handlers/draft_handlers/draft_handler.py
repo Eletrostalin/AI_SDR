@@ -2,46 +2,59 @@ import asyncio
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from db.models import Templates, ContentPlan
+from db import db
+from db.models import Templates, ContentPlan, Waves
 from logger import logger
 from utils.google_doc import append_drafts_to_sheet
 from utils.utils import send_to_model
 
 
-async def generate_drafts_for_wave(db: Session, df, wave):
+async def generate_drafts_for_wave(db_session, df, wave_id):
     """
     Генерация черновиков для волны и сохранение в Google Таблицу.
 
-    :param db: Сессия БД.
+    :param db_session: Сессия БД.
     :param df: DataFrame с лидами.
-    :param wave: Данные волны рассылки.
+    :param wave_id: ID волны рассылки.
     """
-    logger.info(f"🚀 Начинаем генерацию черновиков для волны ID {wave.wave_id} (кол-во лидов: {len(df)})")
+    logger.info(f"🚀 Запуск генерации черновиков для волны ID {wave_id}")
 
-    # Получаем шаблон письма
-    template = db.query(Templates).filter_by(wave_id=wave.wave_id).first()
+    wave = db_session.query(Waves).filter_by(wave_id=wave_id).first()
+    if not wave:
+        logger.error(f"❌ Ошибка: Волна с ID {wave_id} не найдена.")
+        return
+
+    logger.info(f"🌊 Волна ID {wave.wave_id} найдена. Обработка {len(df)} лидов.")
+
+    template = db_session.query(Templates).filter_by(wave_id=wave.wave_id).first()
     if not template:
         logger.error(f"❌ Нет шаблона для волны ID {wave.wave_id}. Пропускаем.")
         return
 
-    # Получаем описание контентного плана
-    content_plan = db.query(ContentPlan).filter_by(id=wave.content_plan_id).first()
+    content_plan = db_session.query(ContentPlan).filter_by(content_plan_id=wave.content_plan_id).first()
     description = content_plan.description if content_plan else "Описание отсутствует"
-
-    email_subject = wave.subject  # Тема письма
+    email_subject = wave.subject
 
     batch_size = 50
     leads_batches = [df[i:i + batch_size] for i in range(0, len(df), batch_size)]
+    logger.info(f"📦 Разбивка данных: {len(leads_batches)} партий по {batch_size} лидов")
 
-    for batch in leads_batches:
+    for batch_num, batch in enumerate(leads_batches, start=1):
+        logger.info(f"⚙️ Обработка партии {batch_num} из {len(leads_batches)}")
+
         tasks = [
             generate_draft_for_lead(template, lead, email_subject, wave.wave_id, description)
             for _, lead in batch.iterrows()
         ]
-        results = await asyncio.gather(*tasks)
 
+        results = await asyncio.gather(*tasks)
         successful_drafts = [res for res in results if res]
-        append_drafts_to_sheet(wave.sheet_id, wave.sheet_name, successful_drafts)
+
+        if successful_drafts:
+            logger.info(f"✅ Успешно сгенерировано {len(successful_drafts)} черновиков. Отправляем в Google Sheets.")
+            append_drafts_to_sheet(successful_drafts)
+        else:
+            logger.warning("⚠️ Ни один черновик не был успешно создан в этой партии.")
 
 
 async def generate_draft_for_lead(template, lead_data, subject, wave_id, description):
@@ -97,6 +110,7 @@ async def generate_draft_for_lead(template, lead_data, subject, wave_id, descrip
     - Используй описание контентного плана, чтобы адаптировать текст под цель кампании.
     - Перемешай абзацы, добавь уникальное вступление.
     - Используй разные формулировки, чтобы письма не были однотипными.
+    Важное замечание!! Если в каких то переменных будет None не используй их в тексте письма.
     """
 
     # Попытки генерации черновика (3 раза)

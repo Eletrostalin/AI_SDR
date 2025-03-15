@@ -5,6 +5,7 @@ from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
 from utils.google_doc import create_excel_table
 from aiogram.types import Message, FSInputFile
+
 async def handle_view_campaigns(message: Message, state):
     """
     Обработчик для просмотра рекламных кампаний.

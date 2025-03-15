@@ -102,7 +102,7 @@ async def handle_brief_upload(message: types.Message, state: FSMContext):
     try:
         df = pd.read_excel(io.BytesIO(file_stream.read()), header=None)
         df.iloc[:2] = df.iloc[:2].ffill(axis=1)
-        company_name = str(df.iloc[1, 1]).strip()
+        company_name = str(df.iloc[2, 2]).strip()
 
         if not company_name:
             await message.answer("❌ В файле отсутствует название компании. Проверьте и загрузите заново.")

@@ -55,8 +55,23 @@ async def handle_add_content_plan(message: Message, state: FSMContext):
 
         logger.info(f"✅ Загружены данные: company_id={company_id}, campaign_id={campaign_id}")
 
-        await message.answer("Давайте создадим контент-план. Укажите запрещенные темы и слова.")
-        await state.set_state(AddContentPlanState.waiting_for_restricted_topics)
+        await message.answer("Перейдем к созданию контент-плана. Для этого ответьте на несколько вопросов:")
+        await message.answer("Опишите аудиторию и стиль общения для контент-плана.\n\n"
+                             "Вы можете использовать текст или выбрать из вариантов:\n\n"
+                             "**Аудитория:**\n"
+                             "1. Холодные лиды\n"
+                             "2. Тёплые лиды\n"
+                             "3. Клиенты\n"
+                             "4. Смешанная\n\n"
+                             "**Стиль общения:**\n"
+                             "1. Официально-деловой\n"
+                             "2. Дружелюбно-профессиональный\n"
+                             "3. Эмоционально-убедительный\n"
+                             "4. Экспертно-консультативный\n"
+                             "5. Минималистичный\n\n"
+                             "Введите цифры (например, '2 4') или текст.")
+        # await state.set_state(AddContentPlanState.waiting_for_restricted_topics) Здесь закомменчены запрезенные темы
+        await state.set_state(AddContentPlanState.waiting_for_audience_style)
 
     except Exception as e:
         logger.error(f"❌ Ошибка при загрузке данных компании/кампании: {e}", exc_info=True)
@@ -65,30 +80,30 @@ async def handle_add_content_plan(message: Message, state: FSMContext):
         db.close()
 
 
-@router.message(StateFilter(AddContentPlanState.waiting_for_restricted_topics))
-async def process_restricted_topics(message: Message, state: FSMContext):
-    """
-    Сохраняет запрещенные темы и слова, переходит к выбору аудитории и стиля общения.
-    """
-    restricted_topics = message.text.strip()
-    await state.update_data(restricted_topics=restricted_topics)
-
-    await message.answer("Опишите аудиторию и стиль общения для контент-плана.\n\n"
-                         "Вы можете использовать текст или выбрать из вариантов:\n\n"
-                         "**Аудитория:**\n"
-                         "1. Холодные лиды\n"
-                         "2. Тёплые лиды\n"
-                         "3. Клиенты\n"
-                         "4. Смешанная\n\n"
-                         "**Стиль общения:**\n"
-                         "1. Официально-деловой\n"
-                         "2. Дружелюбно-профессиональный\n"
-                         "3. Эмоционально-убедительный\n"
-                         "4. Экспертно-консультативный\n"
-                         "5. Минималистичный\n\n"
-                         "Введите цифры (например, '2 4') или текст.")
-
-    await state.set_state(AddContentPlanState.waiting_for_audience_style)
+# @router.message(StateFilter(AddContentPlanState.waiting_for_restricted_topics))
+# async def process_restricted_topics(message: Message, state: FSMContext):
+#     """
+#     Сохраняет запрещенные темы и слова, переходит к выбору аудитории и стиля общения.
+#     """
+#     restricted_topics = message.text.strip()
+#     await state.update_data(restricted_topics=restricted_topics)
+#
+#     await message.answer("Опишите аудиторию и стиль общения для контент-плана.\n\n"
+#                          "Вы можете использовать текст или выбрать из вариантов:\n\n"
+#                          "**Аудитория:**\n"
+#                          "1. Холодные лиды\n"
+#                          "2. Тёплые лиды\n"
+#                          "3. Клиенты\n"
+#                          "4. Смешанная\n\n"
+#                          "**Стиль общения:**\n"
+#                          "1. Официально-деловой\n"
+#                          "2. Дружелюбно-профессиональный\n"
+#                          "3. Эмоционально-убедительный\n"
+#                          "4. Экспертно-консультативный\n"
+#                          "5. Минималистичный\n\n"
+#                          "Введите цифры (например, '2 4') или текст.")
+#
+#     await state.set_state(AddContentPlanState.waiting_for_audience_style)
 
 
 @router.message(StateFilter(AddContentPlanState.waiting_for_audience_style))
@@ -145,24 +160,26 @@ async def process_audience_style(message: Message, state: FSMContext):
         await state.update_data(audience=audience, style=style)
         await state.update_data(wave_count=1)  # Всегда 1 волна
 
-        await message.answer("Введите название волны (например, 'Первая волна'):")
-        await state.set_state(AddContentPlanState.waiting_for_wave_name)
+        # await message.answer("Введите название волны (например, 'Первая волна'):")
+        await message.answer("Укажите дату отправки контент-плана (в формате ДД.ММ.ГГГГ):")
+        await state.set_state(AddContentPlanState.waiting_for_send_date)
+       # await state.set_state(AddContentPlanState.waiting_for_wave_name)
 
     except json.JSONDecodeError as e:
         logger.error(f"Ошибка обработки данных от модели: {e}", exc_info=True)
         await message.reply("Произошла ошибка при анализе ответа. Попробуйте ещё раз.")
 
 
-@router.message(StateFilter(AddContentPlanState.waiting_for_wave_name))
-async def process_wave_name(message: Message, state: FSMContext):
-    """
-    Сохраняет название волны и запрашивает дату отправки.
-    """
-    wave_name = message.text.strip()
-    await state.update_data(wave_name=wave_name)
-
-    await message.answer("Укажите дату отправки контент-плана (в формате ДД.ММ.ГГГГ):")
-    await state.set_state(AddContentPlanState.waiting_for_send_date)
+# @router.message(StateFilter(AddContentPlanState.waiting_for_wave_name))
+# async def process_wave_name(message: Message, state: FSMContext):
+#     """
+#     Сохраняет название волны и запрашивает дату отправки.
+#     """
+#     wave_name = message.text.strip()
+#     await state.update_data(wave_name=wave_name)
+#
+#     await message.answer("Укажите дату отправки контент-плана (в формате ДД.ММ.ГГГГ):")
+#     await state.set_state(AddContentPlanState.waiting_for_send_date)
 
 
 @router.message(StateFilter(AddContentPlanState.waiting_for_send_date))
@@ -183,7 +200,7 @@ async def process_send_date(message: Message, state: FSMContext):
             return  # Не переходим дальше, ожидаем новый ввод
 
         await state.update_data(send_date=send_date.isoformat())  # Сохраняем дату в ISO-формате
-        logger.info(f"✅ Введена дата {send_date} для контент-плана.")
+        logger.info(f"Введена дата {send_date} для контент-плана.")
 
     except ValueError:
         await message.reply("⚠️ Некорректный формат даты. Введите в формате ДД.ММ.ГГГГ.")
@@ -197,11 +214,11 @@ async def process_send_date(message: Message, state: FSMContext):
     campaign_id = campaign_data.get("campaign_id")
 
     if not company_id or not campaign_id:
-        logger.error(f"❌ Ошибка: company_id или campaign_id отсутствует. Данные: {state_data}")
+        logger.error(f"Ошибка: company_id или campaign_id отсутствует. Данные: {state_data}")
         await message.reply("❌ Ошибка: Кампания не найдена.")
         return
 
-    restricted_topics = state_data.get("restricted_topics", "")
+    #restricted_topics = state_data.get("restricted_topics", "")
     audience = state_data.get("audience", "")
     style = state_data.get("style", "")
     wave_count = state_data.get("wave_count", 1)
@@ -212,7 +229,7 @@ async def process_send_date(message: Message, state: FSMContext):
     description = {
         "audience": audience,
         "style": style,
-        "restricted_topics": restricted_topics,
+        #"restricted_topics": restricted_topics,
         "send_date": send_date
     }
 

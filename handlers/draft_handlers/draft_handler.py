@@ -63,6 +63,7 @@ async def generate_drafts_for_wave(db_session, df, wave_id):
 
         if successful_drafts:
             logger.info(f"✅ Успешно сгенерировано {len(successful_drafts)} черновиков. Отправляем в Google Sheets.")
+            logger.info(f"✅ Успешно добавлено {len(successful_drafts)} черновиков в Google Таблицу.")
             append_drafts_to_sheet(company.google_sheet_url, company.google_sheet_name, successful_drafts)
         else:
             logger.warning("⚠️ Ни один черновик не был успешно создан в этой партии.")

@@ -96,7 +96,7 @@ def connect_to_google_sheets(sheet_id: str, sheet_name: str):
 
 def append_drafts_to_sheet(sheet_url: str, sheet_name: str, successful_drafts):
     """
-    Добавляет список черновиков в Google Таблицу.
+    Перезаписывает список черновиков в Google Таблице.
 
     :param sheet_url: URL Google Таблицы компании.
     :param sheet_name: Имя листа компании.
@@ -121,18 +121,27 @@ def append_drafts_to_sheet(sheet_url: str, sheet_name: str, successful_drafts):
             logger.error(f"❌ Ошибка: Не удалось получить объект таблицы для ID {sheet_id}.")
             return
 
-        logger.info(f"📋 Подготовка к записи {len(successful_drafts)} черновиков в Google Таблицу ID {sheet_id}, лист {sheet_name}...")
+        logger.info(f"📋 Подготовка к перезаписи {len(successful_drafts)} черновиков в Google Таблице ID {sheet_id}, лист {sheet_name}...")
 
+        # Заголовки таблицы
+        headers = ["ID Лида", "Email", "Тема письма", "Текст письма"]
+
+        # Данные для записи
         rows = [[
-            draft.get("lead_id", "N/A"),   # ✅ ID Лида
-            draft.get("email", "N/A"),     # ✅ Email получателя
-            draft.get("subject", "N/A"),   # ✅ Уникальная тема письма
-            draft.get("text", "N/A")       # ✅ Уникальный текст письма
+            draft.get("lead_id", "N/A"),
+            draft.get("email", "N/A"),
+            draft.get("subject", "N/A"),
+            draft.get("text", "N/A")
         ] for draft in successful_drafts]
 
-        logger.debug(f"📄 Данные для записи в таблицу: {rows}")
+        # Добавляем заголовки в начало списка
+        rows.insert(0, headers)
 
-        sheet.append_rows(rows, value_input_option="RAW")
-        logger.info(f"✅ Успешно добавлено {len(rows)} черновиков в Google Таблицу.")
+        logger.debug(f"📄 Данные для записи в таблицу (с заголовками): {rows}")
+
+        # Перезаписываем данные с первой ячейки
+        sheet.update("A1", rows, value_input_option="RAW")
+
+        logger.info(f"✅ Успешно перезаписано {len(rows) - 1} черновиков в Google Таблицу.")
     except Exception as e:
         logger.error(f"❌ Ошибка при записи в Google Sheets: {e}", exc_info=True)

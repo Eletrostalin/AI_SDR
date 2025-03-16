@@ -7,7 +7,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.types import InlineKeyboardButton, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from db import db
+from db.db import SessionLocal
 from db.db_company import get_company_by_chat_id
 from db.db_template import get_campaign_by_thread, get_company_by_id, get_content_plans_by_campaign, \
     get_waves_by_content_plan, get_wave_by_id, save_template, get_chat_thread_by_chat_id, \
@@ -19,6 +19,7 @@ from states.states import TemplateStates
 import logging
 
 from utils.utils import send_to_model
+from utils.wave_shedulers import get_filtered_leads_for_wave
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -56,7 +57,10 @@ async def add_template(message: types.Message, state: FSMContext):
         logger.debug(f"Найдена компания: {company.company_id} ({company.name})")
 
         # Получаем информацию о компании
-        company_info = db.query(CompanyInfo).filter_by(company_id=company.company_id).first()
+
+        db_session = SessionLocal()  # Получаем сессию
+        company_info = db_session.query(CompanyInfo).filter_by(company_id=company.company_id).first()
+        db_session.close()  # Закрываем сессию после использования
         business_sector = company_info.business_sector if company_info else None
 
         # if not business_sector:
@@ -196,75 +200,87 @@ async def handle_user_input(message: types.Message, state: FSMContext):
     company_id = state_data.get("company_id")
     content_plan_id = state_data.get("content_plan_id")
 
-    if not company_id:
-        logger.warning(f"[User {message.from_user.id}] Company ID отсутствует в FSM, пытаемся найти по chat_id={chat_id}")
-        company = get_company_by_chat_id(chat_id)
-        if company:
-            company_id = company.company_id
-            await state.update_data(company_id=company_id)
-            logger.info(f"[User {message.from_user.id}] Найден company_id={company_id} и сохранен в FSM.")
-        else:
-            logger.error(f"[User {message.from_user.id}] Ошибка: компания не найдена.")
-            await message.reply("Ошибка: компания не найдена.")
+    # Создаём сессию для работы с БД
+    db_session = SessionLocal()
+
+    try:
+        if not company_id:
+            logger.warning(
+                f"[User {message.from_user.id}] Company ID отсутствует в FSM, пытаемся найти по chat_id={chat_id}")
+
+            company = get_company_by_chat_id(db_session, chat_id)  # Передаём сессию
+            if company:
+                company_id = company.company_id
+                await state.update_data(company_id=company_id)
+                logger.info(f"[User {message.from_user.id}] Найден company_id={company_id} и сохранен в FSM.")
+            else:
+                logger.error(f"[User {message.from_user.id}] Ошибка: компания не найдена.")
+                await message.reply("Ошибка: компания не найдена.")
+                return
+
+        if not content_plan_id:
+            logger.error(f"[User {message.from_user.id}] Ошибка: контент-план не найден в FSM.")
+            await message.reply("Ошибка: не удалось найти контент-план.")
             return
 
-    if not content_plan_id:
-        logger.error(f"[User {message.from_user.id}] Ошибка: контент-план не найден в FSM.")
-        await message.reply("Ошибка: не удалось найти контент-план.")
-        return
+        # Получаем информацию о компании и контент-плане
+        company_info, content_plan_desc = get_company_info_and_content_plan(company_id, content_plan_id)
 
-    # Получаем информацию о компании и контент-плане
-    company_info, content_plan_desc = get_company_info_and_content_plan(company_id, content_plan_id)
+        if not company_info:
+            logger.error(f"[User {message.from_user.id}] Ошибка: данные компании или контент-план не найдены.")
+            await message.reply("Ошибка: не удалось найти данные компании или контент-план.")
+            return
 
-    if not company_info:
-        logger.error(f"[User {message.from_user.id}] Ошибка: данные компании или контент-план не найдены.")
-        await message.reply("Ошибка: не удалось найти данные компании или контент-план.")
-        return
+        logger.info(f"[User {message.from_user.id}] Данные компании успешно загружены.")
 
-    logger.info(f"[User {message.from_user.id}] Данные компании успешно загружены.")
+        # Собираем данные для модели
+        company_details = {
+            "company_name": company_info.company_name or "Неизвестная компания",
+            "company_mission": company_info.company_mission,
+            "company_values": company_info.company_values,
+            "business_sector": company_info.business_sector,
+            "office_addresses_and_hours": company_info.office_addresses_and_hours,
+            "resource_links": company_info.resource_links,
+            "target_audience_b2b_b2c_niche_geography": company_info.target_audience_b2b_b2c_niche_geography,
+            "unique_selling_proposition": company_info.unique_selling_proposition,
+            "customer_pain_points": company_info.customer_pain_points,
+            "competitor_differences": company_info.competitor_differences,
+            "promoted_products_and_services": company_info.promoted_products_and_services,
+            "delivery_availability_geographical_coverage": company_info.delivery_availability_geographical_coverage,
+            "frequently_asked_questions_with_answers": company_info.frequently_asked_questions_with_answers,
+            "common_customer_objections_and_responses": company_info.common_customer_objections_and_responses,
+            "successful_case_studies": company_info.successful_case_studies,
+            "additional_information": company_info.additional_information,
+            "content_plan_description": content_plan_desc,
+            "user_request": user_input,  # Добавляем запрос пользователя
+        }
+        company_details = {k: v for k, v in company_details.items() if v}  # Удаляем пустые поля
 
-    # Собираем данные для модели
-    company_details = {
-        "company_name": company_info.company_name or "Неизвестная компания",
-        "company_mission": company_info.company_mission,
-        "company_values": company_info.company_values,
-        "business_sector": company_info.business_sector,
-        "office_addresses_and_hours": company_info.office_addresses_and_hours,
-        "resource_links": company_info.resource_links,
-        "target_audience_b2b_b2c_niche_geography": company_info.target_audience_b2b_b2c_niche_geography,
-        "unique_selling_proposition": company_info.unique_selling_proposition,
-        "customer_pain_points": company_info.customer_pain_points,
-        "competitor_differences": company_info.competitor_differences,
-        "promoted_products_and_services": company_info.promoted_products_and_services,
-        "delivery_availability_geographical_coverage": company_info.delivery_availability_geographical_coverage,
-        "frequently_asked_questions_with_answers": company_info.frequently_asked_questions_with_answers,
-        "common_customer_objections_and_responses": company_info.common_customer_objections_and_responses,
-        "successful_case_studies": company_info.successful_case_studies,
-        "additional_information": company_info.additional_information,
-        "content_plan_description": content_plan_desc,
-        "user_request": user_input,  # Добавляем запрос пользователя
-    }
-    company_details = {k: v for k, v in company_details.items() if v}  # Удаляем пустые поля
+        logger.debug(f"[User {message.from_user.id}] Подготовленные данные для генерации: {company_details}")
 
-    logger.debug(f"[User {message.from_user.id}] Подготовленные данные для генерации: {company_details}")
+        # Генерируем промпт
+        prompt = generate_email_template_prompt(company_details)
+        logger.debug(f"[User {message.from_user.id}] Сгенерированный промпт: {prompt}")
 
-    # Генерируем промпт
-    prompt = generate_email_template_prompt(company_details)
-    logger.debug(f"[User {message.from_user.id}] Сгенерированный промпт: {prompt}")
+        # Отправляем запрос в модель
+        template_response = send_to_model(prompt)
+        if not template_response:
+            logger.error(f"[User {message.from_user.id}] Ошибка при генерации шаблона.")
+            await message.reply("Ошибка при генерации шаблона. Попробуйте позже.")
+            return
 
-    # Отправляем запрос в модель
-    template_response = send_to_model(prompt)
-    if not template_response:
-        logger.error(f"[User {message.from_user.id}] Ошибка при генерации шаблона.")
-        await message.reply("Ошибка при генерации шаблона. Попробуйте позже.")
-        return
+        await state.update_data(
+            template_content=template_response,
+            user_request=user_input  # Сохраняем запрос пользователя
+        )
+        logger.info(f"[User {message.from_user.id}] Шаблон успешно сгенерирован.")
 
-    await state.update_data(template_content=template_response)
-    logger.info(f"[User {message.from_user.id}] Шаблон успешно сгенерирован.")
+        # Отправляем пользователю сгенерированный шаблон
+        await message.reply(f"Сгенерированный шаблон:\n\n{template_response}\n\nПодтвердите? (да/нет)")
+        await state.set_state(TemplateStates.waiting_for_confirmation)
 
-    # Отправляем пользователю сгенерированный шаблон
-    await message.reply(f"Сгенерированный шаблон:\n\n{template_response}\n\nПодтвердите? (да/нет)")
-    await state.set_state(TemplateStates.waiting_for_confirmation)
+    finally:
+        db_session.close()  # Закрываем сессию после работы
 
 
 @router.message(TemplateStates.waiting_for_confirmation)
@@ -274,9 +290,10 @@ async def confirm_template(message: types.Message, state: FSMContext):
     """
     user_id = message.from_user.id
     chat_id = message.chat.id
+    thread_id = message.message_thread_id  # Получаем thread_id из сообщения пользователя
     state_data = await state.get_data()
 
-    logger.info(f"[User {user_id}] Начал подтверждение шаблона...")
+    logger.info(f"[User {user_id}] Начал подтверждение шаблона... thread_id={thread_id}")
 
     if message.text.strip().lower() != "да":
         await message.reply("Попробуйте снова. Введите новый запрос для генерации шаблона.")
@@ -297,43 +314,62 @@ async def confirm_template(message: types.Message, state: FSMContext):
     template_content = state_data["template_content"]
     user_request = state_data["user_request"]
 
-    wave = get_wave_by_id(wave_id)
-    if not wave:
-        logger.error(f"[User {user_id}] Ошибка: не удалось найти волну с wave_id={wave_id}")
-        await message.reply("Ошибка: не удалось найти волну. Попробуйте снова.")
-        return
+    db_session = SessionLocal()  # Создаём сессию для работы с БД
+    try:
+        wave = db_session.query(Waves).filter_by(wave_id=wave_id).first()
+        if not wave:
+            logger.error(f"[User {user_id}] Ошибка: не удалось найти волну с wave_id={wave_id}")
+            await message.reply("Ошибка: не удалось найти волну. Попробуйте снова.")
+            return
 
-    chat_thread = get_chat_thread_by_chat_id(chat_id)
-    if not chat_thread:
-        await message.reply("Ошибка: не удалось найти кампанию.")
-        return
+        # Проверяем, есть ли thread_id
+        if not thread_id:
+            logger.warning(f"[User {user_id}] Отсутствует thread_id в сообщении, пробуем найти последний активный.")
+            chat_threads = get_chat_thread_by_chat_id(chat_id)
+            if not chat_threads:
+                await message.reply("Ошибка: не удалось найти активный тред для этого чата.")
+                return
+            thread_id = chat_threads[0].thread_id  # Берем первый (например, последний активный)
 
-    campaign = get_campaign_by_thread(chat_thread.thread_id)
-    if not campaign:
-        await message.reply("Ошибка: не удалось найти кампанию.")
-        return
+        campaign = get_campaign_by_thread(thread_id)
+        if not campaign:
+            await message.reply("Ошибка: не удалось найти кампанию.")
+            return
 
-    save_template(company_id, campaign.campaign_id, wave_id, template_content, user_request, wave.subject)
+        save_template(company_id, campaign.campaign_id, wave_id, template_content, user_request, wave.subject)
 
-    logger.info(f"[User {user_id}] Шаблон сохранён!")
+        logger.info(f"[User {user_id}] Шаблон сохранён!")
 
-    await message.reply("Шаблон успешно сохранён и привязан к волне!")
-    # Уведомляем пользователя о начале генерации черновиков
-    company = get_company_by_id(company_id)
-    google_sheet_url = company.google_sheet_url if company and company.google_sheet_url else "Ссылка на таблицу не найдена"
-    await message.reply(
-        f"Начинаю генерацию черновиков. Это может занять до 15 минут.\n"
-        f"📊 Google Таблица: {google_sheet_url}"
-    )
+        await message.reply("Шаблон успешно сохранён и привязан к волне!")
 
-    # Вызов функции генерации черновиков
-    generated_drafts = await generate_drafts_for_wave(wave_id)
+        # Уведомляем пользователя о начале генерации черновиков
+        company = db_session.query(Company).filter_by(company_id=company_id).first()
+        google_sheet_url = company.google_sheet_url if company and company.google_sheet_url else "Ссылка на таблицу не найдена"
+        await message.reply(
+            f"Начинаю генерацию черновиков. Это может занять некоторое время.\n"
+            f"📊 Google Таблица: {google_sheet_url}"
+        )
 
-    # Проверяем, успешно ли сгенерировались черновики
-    if generated_drafts:
-        await message.reply("✅ Черновики успешно сгенерированы и добавлены в систему.")
-    else:
-        await message.reply("⚠️ Ошибка при генерации черновиков. Проверьте настройки и попробуйте снова.")
+        # Загружаем данные о лидах, используя `get_filtered_leads_for_wave`
+        df = get_filtered_leads_for_wave(db_session, wave_id)
+
+        if df.empty:
+            logger.warning(f"[User {user_id}] Нет лидов для волны ID {wave_id}. Генерация отменена.")
+            await message.reply("⚠️ Ошибка: Нет лидов для данной волны. Проверьте настройки и попробуйте снова.")
+            return
+
+        # Вызов функции генерации черновиков в фоновом режиме
+            # Вызов функции генерации черновиков в фоновом режиме
+        generated_drafts = await generate_drafts_for_wave(db_session, df, wave_id)
+
+            # Проверяем, успешно ли сгенерировались черновики
+        if generated_drafts:
+            await message.reply("✅ Черновики успешно сгенерированы и добавлены в систему.")
+        else:
+            await message.reply("⚠️ Ошибка при генерации черновиков. Проверьте настройки и попробуйте снова.")
+
+    finally:
+        db_session.close()  # Закрываем сессию БД
 
     await state.clear()
 

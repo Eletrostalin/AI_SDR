@@ -26,7 +26,7 @@ def get_company_by_id(company_id):
     """ Получает информацию о компании по company_id с подгрузкой CompanyInfo """
     db = SessionLocal()
     try:
-        company = db.query(Company).options(joinedload(Company.company_info)).filter_by(company_id=company_id).first()
+        company = db.query(Company).options(joinedload(Company.info)).filter_by(company_id=company_id).first()
         if not company:
             logger.warning(f"Компания не найдена для company_id={company_id}")
         return company
@@ -131,3 +131,5 @@ def save_template(company_id, campaign_id, wave_id, template_content, user_reque
         return None
     finally:
         db.close()
+
+

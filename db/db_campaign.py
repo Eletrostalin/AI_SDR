@@ -127,9 +127,14 @@ def update_campaign_filters(db: Session, campaign_id: int, filters: dict):
             logger.error(f"❌ Кампания с ID {campaign_id} не найдена.")
             return False
 
+        logger.info(f"🔹 Текущие фильтры перед обновлением: {campaign.filters}")
+        logger.info(f"🔹 Новые фильтры: {filters}")
+        logger.info(f"🔹 Тип данных новых фильтров: {type(filters)}")
+
         campaign.filters = filters
         db.commit()
-        logger.info(f"✅ Фильтры успешно добавлены в кампанию ID {campaign_id}")
+
+        logger.info(f"✅ Фильтры успешно обновлены для кампании ID {campaign_id}: {filters}")
         return True
 
     except Exception as e:

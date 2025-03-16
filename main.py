@@ -5,6 +5,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot import bot
 from db.db import init_db
+from db.migration_manager import apply_migrations
 from logger import logger
 from handlers.campaign_handlers.campaign_delete_handler import (
     handle_delete_campaign_request,
@@ -26,9 +27,9 @@ async def main():
     logger.info("Запуск бота...")
 
     # Применение миграций перед запуском
-    #logger.info("Применение миграций...")
-    #apply_migrations()
-    #logger.info("Миграции успешно применены.")
+    logger.info("Применение миграций...")
+    apply_migrations()
+    logger.info("Миграции успешно применены.")
 
     init_db()
 

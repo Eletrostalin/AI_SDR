@@ -2,6 +2,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from config import GOOGLE_SHEETS_POOL
 from db.db import SessionLocal
 from db.models import Company, CompanyInfo, Campaigns
 from logger import logger

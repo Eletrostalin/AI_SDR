@@ -1,5 +1,5 @@
 EMAIL_SEGMENT_COLUMNS = [
-    "name", "region", "msp_registry", "director_name", "director_position",
+    "file_name", "name", "region", "msp_registry", "director_name", "director_position",
     "phone_number", "email", "website", "primary_activity", "revenue", "employee_count"
 ]
 

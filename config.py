@@ -17,7 +17,7 @@ SHEET_NAME = "Черновики"
 
 # 🔹 Подключаемся к Google Sheets
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-CREDENTIALS_FILE = "/Users/nickstanchenkov/AI SDR/credentials.json"
+CREDENTIALS_FILE = "credentials.json"
 
 
 IMAP_SERVER = "imap.example.com"  # Укажите ваш IMAP-сервер (например, imap.gmail.com)

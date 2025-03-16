@@ -1,7 +1,7 @@
 import pandas as pd
 from aiogram.filters import StateFilter
 from aiogram import F
-from sqlalchemy.orm import Session
+import re
 import os
 import logging
 
@@ -231,7 +231,8 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
                 await message.reply("❌ В загружаемом файле не найдено валидных email-адресов.")
                 return False
 
-        df, valid_emails, multi_email_rows, problematic_rows, problematic_values = clean_and_validate_emails(df)
+        # 🔥 **Обрабатываем email и проверяем, есть ли дубликаты в ячейках**
+        df, valid_emails, multi_email_count, multi_email_rows, problematic_values = clean_and_validate_emails(df)
         logger.debug(f"📊 Данные после валидации email (первые 5 строк):\n{df.head()}")
 
         if valid_emails is None:
@@ -240,6 +241,30 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
 
         logger.info(f"📥 Подготовлено {len(df)} строк для сохранения в таблицу {segment_table_name}")
 
+        # 🔹 **Проверяем, есть ли строки с несколькими email в одной ячейке**
+        if multi_email_count > 0:
+            logger.warning(f"⚠️ Обнаружено {multi_email_count} строк с несколькими email. Запрашиваем решение у пользователя.")
+
+            # 🔥 **Сохраняем данные в состояние FSM**
+            await state.update_data(
+                processing_df=df,
+                email_column=valid_emails,
+                segment_table_name=segment_table_name
+            )
+
+            # 🔥 **Меняем состояние FSM на ожидание решения пользователя**
+            await state.set_state(EmailUploadState.duplicate_email_check)
+            logger.debug(f"📌 Установлено новое состояние: {await state.get_state()}")
+
+            # 🔥 **Отправляем пользователю кнопки выбора**
+            await message.reply(
+                "В таблице есть строки, где указано несколько email в одной ячейке. Как будем обрабатывать?",
+                reply_markup=get_email_choice_keyboard()
+            )
+
+            return False  # ❌ Останавливаем обработку до ответа пользователя
+
+        # 🔥 **Если дубликатов нет – продолжаем сохранение данных**
         save_result = await save_cleaned_data(df, segment_table_name, message, state)
         if save_result:
             logger.info(f"✅ Данные успешно сохранены в {segment_table_name}")
@@ -251,7 +276,6 @@ async def process_email_table(file_path: str, segment_table_name: str, message: 
     except Exception as e:
         logger.error(f"❌ Ошибка при обработке файла {file_path}: {e}", exc_info=True)
         return False
-
 
 @router.callback_query(StateFilter(EmailUploadState.duplicate_email_check))
 async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
@@ -270,12 +294,30 @@ async def handle_email_choice_callback(call: CallbackQuery, state: FSMContext):
 
     if choice == "split_emails":
         logger.info("✅ Пользователь выбрал разделение записей с несколькими email.")
-        df = df.assign(**{email_column: df[email_column].str.split(r"[;, ]")}).explode(email_column)
-        df[email_column] = df[email_column].str.strip()
 
+        # 🔥 **Разделение email-адресов с учетом `\n`, `,`, `;`, пробелов**
+        df[email_column] = df[email_column].astype(str).apply(lambda x: re.split(r"[\n,; ]+", x.strip()) if x else [])
+
+        # 🔹 **Явное преобразование, чтобы explode() сработал**
+        df = df.explode(email_column).reset_index(drop=True)
+
+        # Убираем пустые строки (если вдруг были ошибки в данных)
+        df[email_column] = df[email_column].str.strip()
+        df = df[df[email_column] != ""]
+
+        # **Логируем результат**
+        logger.debug(f"📊 Данные после разбиения email (первые 5 строк):\n{df.head()}")
+
+        # **Обновляем данные в FSM**
+        await state.update_data(processing_df=df)
+
+        # **Уведомляем пользователя**
         await call.message.edit_text("✅ Записи разделены! Теперь каждая строка содержит только **один** email.")
 
+        # **Сохраняем обновленный DataFrame в БД**
         await save_cleaned_data(df, segment_table_name, call.message, state)
+
+        # **Спрашиваем, хочет ли пользователь загрузить еще файлы**
         await ask_about_more_files(call.message, state)
 
     elif choice == "upload_new_file":

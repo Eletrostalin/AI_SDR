@@ -1,5 +1,6 @@
 import gspread
 from google.oauth2.service_account import Credentials
+import re
 
 from config import CREDENTIALS_FILE, SCOPES, SHEET_NAME, SHEET_ID
 from logger import logger
@@ -9,7 +10,17 @@ from datetime import datetime
 import pandas as pd
 from openpyxl.workbook import Workbook
 from logger import logger
-  # Загрузи свой JSON-файл с ключами
+
+
+def extract_sheet_id_from_url(sheet_url: str) -> str:
+    """
+    Извлекает ID Google Таблицы из URL.
+
+    :param sheet_url: Полный URL Google Таблицы.
+    :return: ID таблицы или None, если не удалось извлечь.
+    """
+    match = re.search(r"/d/([a-zA-Z0-9-_]+)", sheet_url)
+    return match.group(1) if match else None
 
 
 def create_excel_table(data: list, file_name: str = "content_plans.xlsx") -> str:
@@ -83,11 +94,11 @@ def connect_to_google_sheets(sheet_id: str, sheet_name: str):
     return sheet
 
 
-def append_drafts_to_sheet(sheet_id: str, sheet_name: str, successful_drafts):
+def append_drafts_to_sheet(sheet_url: str, sheet_name: str, successful_drafts):
     """
     Добавляет список черновиков в Google Таблицу.
 
-    :param sheet_id: ID Google Таблицы компании.
+    :param sheet_url: URL Google Таблицы компании.
     :param sheet_name: Имя листа компании.
     :param successful_drafts: Список черновиков (dict).
     """
@@ -95,14 +106,19 @@ def append_drafts_to_sheet(sheet_id: str, sheet_name: str, successful_drafts):
         logger.warning("⚠️ Нет успешных черновиков для добавления в Google Таблицу.")
         return
 
-    if not sheet_id or not sheet_name:
-        logger.error("❌ Ошибка: sheet_id или sheet_name не заданы. Прерывание записи в Google Таблицу.")
+    sheet_id = extract_sheet_id_from_url(sheet_url)
+    if not sheet_id:
+        logger.error(f"❌ Ошибка: Не удалось извлечь sheet_id из URL {sheet_url}.")
+        return
+
+    if not sheet_name:
+        logger.error("❌ Ошибка: sheet_name не задан. Прерывание записи в Google Таблицу.")
         return
 
     try:
         sheet = connect_to_google_sheets(sheet_id, sheet_name)
         if not sheet:
-            logger.error("❌ Ошибка: Не удалось получить объект таблицы.")
+            logger.error(f"❌ Ошибка: Не удалось получить объект таблицы для ID {sheet_id}.")
             return
 
         logger.info(f"📋 Подготовка к записи {len(successful_drafts)} черновиков в Google Таблицу ID {sheet_id}, лист {sheet_name}...")

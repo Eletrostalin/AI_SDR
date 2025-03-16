@@ -371,6 +371,15 @@ async def confirm_template(message: types.Message, state: FSMContext):
             await message.reply("Ошибка: не удалось найти кампанию.")
             return
 
+            # **Извлекаем ссылку на Google Таблицу**
+        company = db.query(Company).filter_by(company_id=company_id).first()
+        google_sheet_url = company.google_sheet_url if company else None
+
+        if not google_sheet_url:
+            logger.warning(f"⚠️ [User {user_id}] У компании {company_id} нет ссылки на Google Таблицу")
+            google_sheet_url = "Ссылка отсутствует."
+
+
         # ✅ Создаём шаблон
         new_template = Templates(
             company_id=company_id,
@@ -386,6 +395,11 @@ async def confirm_template(message: types.Message, state: FSMContext):
         logger.info(f"✅ [User {user_id}] Шаблон сохранён! Subject: {subject}, Волна: {wave_id}")
 
         await message.reply("Шаблон успешно сохранён и привязан к волне!")
+        # 📌 **Отправляем пользователю ссылку на таблицу**
+        await message.reply(
+            f"Начинаю генерацию черновиков. Это может занять до 15 минут.\n"
+            f"📊 Google Таблица: {google_sheet_url}"
+        )
 
         # 🚀 **Запуск генерации черновиков после успешного сохранения шаблона**
         df = get_filtered_leads_for_wave(db, wave_id)  # Получаем лидов

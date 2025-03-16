@@ -84,7 +84,9 @@ def clean_and_validate_emails(df: pd.DataFrame) -> tuple:
     """Очищает e-mail колонки, подсчитывает записи с несколькими email и возвращает номера строк и значения."""
 
     email_column = next((col for col in df.columns if "email" in col.lower()), None)
+
     if not email_column:
+        logger.warning("⚠️ Внимание: В загруженной таблице не найдено колонок, содержащих 'email'.")
         return df, None, 0, [], []  # Нет email-колонки
 
     df[email_column] = df[email_column].astype(str).str.strip()
@@ -92,21 +94,29 @@ def clean_and_validate_emails(df: pd.DataFrame) -> tuple:
     multi_email_rows = []
     problematic_values = []
 
+    logger.debug(f"📩 Начинаем проверку email-колонки: {email_column}")
+
     for index, value in df[email_column].items():
+        logger.debug(f"🔍 Обрабатываем строку {index + 1}: '{value}'")
+
         count, emails = count_emails_in_cell(value)
+
         if count > 1:
+            logger.info(f"📌 В строке {index + 1} найдено {count} email: {emails}")
             multi_email_rows.append(index + 1)  # +1, чтобы соответствовало Excel
             problematic_values.append(", ".join(emails))
+
+    logger.info(f"✅ Найдено {len(multi_email_rows)} строк с несколькими email.")
 
     return df, email_column, len(multi_email_rows), multi_email_rows, problematic_values
 
 
 async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message, state: FSMContext):
-    """Сохраняет очищенные данные в БД, используя `file_name`, сохранённый в FSMContext."""
+    """Сохраняет очищенные данные в БД, оставляя только необходимые колонки."""
 
     # Извлекаем `file_name` из состояния FSM
     state_data = await state.get_data()
-    file_name = state_data.get("file_name")  # Теперь `file_name` сохраняется при загрузке
+    file_name = state_data.get("file_name")
 
     if not file_name:
         await message.reply("⚠️ Ошибка: не удалось определить имя файла.")
@@ -115,25 +125,19 @@ async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message, 
     logger.debug(f"📌 Используется file_name: {file_name}")
 
     # **Добавляем file_name в DataFrame**
-    df["file_name"] = file_name  # ⬅️ Добавили колонку с названием файла
+    df["file_name"] = file_name  # Добавляем колонку с названием файла
 
     # **Обновляем список обязательных колонок**
     REQUIRED_COLUMNS = EMAIL_SEGMENT_COLUMNS + ["file_name"]
-    MANDATORY_COLUMNS = ["email", "file_name"]  # Обязательные колонки, которые должны быть заполнены
+    MANDATORY_COLUMNS = ["email", "file_name"]  # Обязательные колонки
 
     logger.debug(f"📌 REQUIRED_COLUMNS: {REQUIRED_COLUMNS}")
-    logger.debug(f"📌 Фактические колонки в DataFrame перед проверкой: {df.columns.tolist()}")
+    logger.debug(f"📌 Фактические колонки в DataFrame перед фильтрацией: {df.columns.tolist()}")
 
     # **Оставляем только нужные колонки**
     df = df[[col for col in df.columns if col in REQUIRED_COLUMNS]]
 
     logger.debug(f"📌 Итоговые колонки после фильтрации: {df.columns.tolist()}")
-
-    # Проверяем, есть ли обязательные колонки
-    missing_mandatory = [col for col in MANDATORY_COLUMNS if col not in df.columns]
-    if missing_mandatory:
-        await message.reply(f"⚠️ Отсутствуют обязательные колонки: {', '.join(missing_mandatory)}. Проверьте загруженный файл.")
-        return False
 
     # **Добавляем отсутствующие колонки из REQUIRED_COLUMNS и заполняем их None**
     for col in REQUIRED_COLUMNS:
@@ -145,8 +149,7 @@ async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message, 
     # Проверяем, есть ли обязательные колонки
     missing_mandatory = [col for col in MANDATORY_COLUMNS if col not in df.columns]
     if missing_mandatory:
-        await message.reply(
-            f"⚠️ Отсутствуют обязательные колонки: {', '.join(missing_mandatory)}. Проверьте загруженный файл.")
+        await message.reply(f"⚠️ Отсутствуют обязательные колонки: {', '.join(missing_mandatory)}. Проверьте загруженный файл.")
         return False
 
     # Проверяем, существует ли таблица

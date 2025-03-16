@@ -29,12 +29,12 @@ async def generate_drafts_for_wave(db_session, df, wave_id):
     logger.info(f"🌊 Волна ID {wave.wave_id} найдена. Обработка {len(df)} лидов.")
 
     company = db_session.query(Company).filter_by(company_id=wave.company_id).first()
-    if not company or not company.google_sheet_id or not company.google_sheet_name:
+    if not company or not company.google_sheet_url or not company.google_sheet_name:
         logger.error(f"❌ Ошибка: Не найдены Google-данные компании ID {wave.company_id}. Прерываем генерацию.")
         return
 
     logger.info(
-        f"📋 Компания ID {wave.company_id} использует Google Таблицу ID {company.google_sheet_id}, лист {company.google_sheet_name}")
+        f"📋 Компания ID {wave.company_id} использует Google Таблицу ID {company.google_sheet_url}, лист {company.google_sheet_name}")
 
     template = db_session.query(Templates).filter_by(wave_id=wave.wave_id).first()
     if not template:
@@ -62,7 +62,7 @@ async def generate_drafts_for_wave(db_session, df, wave_id):
 
         if successful_drafts:
             logger.info(f"✅ Успешно сгенерировано {len(successful_drafts)} черновиков. Отправляем в Google Sheets.")
-            append_drafts_to_sheet(company.google_sheet_id, company.google_sheet_name, successful_drafts)
+            append_drafts_to_sheet(company.google_sheet_url, company.google_sheet_name, successful_drafts)
         else:
             logger.warning("⚠️ Ни один черновик не был успешно создан в этой партии.")
 

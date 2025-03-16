@@ -178,7 +178,7 @@ async def process_send_date(message: Message, state: FSMContext):
         send_date = datetime.strptime(user_input, "%d.%m.%Y").date()
         today = date.today()
 
-        if send_date < today:
+        if send_date <= today:
             await message.reply("❌ Ошибка: Дата не может быть в прошлом. Введите новую дату в формате ДД.ММ.ГГГГ.")
             return  # Не переходим дальше, ожидаем новый ввод
 

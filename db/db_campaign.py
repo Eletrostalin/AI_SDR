@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from sqlalchemy.sql import text
 from sqlalchemy.orm import Session
@@ -113,6 +114,13 @@ def get_campaign_by_thread_id(db: Session, thread_id: int) -> Campaigns | None:
     return db.query(Campaigns).filter_by(thread_id=thread_id).first()
 
 
+import json
+import re
+
+def clean_string(value: str) -> str:
+    """Удаляет экранирование Unicode из строки."""
+    return value.encode('utf-8').decode('unicode_escape')
+
 def update_campaign_filters(db: Session, campaign_id: int, filters: dict):
     """
     Обновляет фильтры в существующей кампании.
@@ -127,17 +135,53 @@ def update_campaign_filters(db: Session, campaign_id: int, filters: dict):
             logger.error(f"❌ Кампания с ID {campaign_id} не найдена.")
             return False
 
-        logger.info(f"🔹 Текущие фильтры перед обновлением: {campaign.filters}")
-        logger.info(f"🔹 Новые фильтры: {filters}")
-        logger.info(f"🔹 Тип данных новых фильтров: {type(filters)}")
+        # Приведение формата фильтров к корректному виду
+        filters = normalize_filters(filters)
 
-        campaign.filters = filters
+        # Логирование перед записью
+        logger.info(f"📌 Записываем в БД: {filters}, тип: {type(filters)}")
+
+        campaign.filters = filters  # Записываем как JSON
         db.commit()
 
-        logger.info(f"✅ Фильтры успешно обновлены для кампании ID {campaign_id}: {filters}")
+        logger.info(f"✅ Успешно записали фильтры: {campaign.filters}")
+        logger.info(f"✅ Фильтры успешно добавлены в кампанию ID {campaign_id}")
         return True
 
     except Exception as e:
         db.rollback()
         logger.error(f"❌ Ошибка при обновлении фильтров кампании ID {campaign_id}: {e}", exc_info=True)
         return False
+
+
+def normalize_filters(filters: dict) -> dict:
+    """
+    Приводит фильтры к единому формату:
+    - Строки преобразуются в списки, если ожидается список.
+    - Сложные фильтры (диапазоны чисел) остаются без изменений.
+    - Булевы значения остаются без изменений.
+
+    :param filters: Фильтры в формате dict.
+    :return: Преобразованные фильтры.
+    """
+    normalized_filters = {}
+
+    for key, value in filters.items():
+        if key == "region":  # Гарантируем, что region всегда будет списком
+            if isinstance(value, str):
+                normalized_filters[key] = [value]  # Превращаем строку в список
+            elif isinstance(value, list):
+                normalized_filters[key] = value  # Оставляем список как есть
+            else:
+                logger.warning(f"⚠️ Неожиданный формат region: {value}, тип: {type(value)}")
+                normalized_filters[key] = value  # Логируем, но оставляем как есть
+
+        elif isinstance(value, (int, bool, dict, list)):
+            # Если значение уже в корректном формате, оставляем его
+            normalized_filters[key] = value
+
+        else:
+            logger.warning(f"⚠️ Неожиданный формат фильтра {key}: {value}, тип: {type(value)}")
+            normalized_filters[key] = value  # Логируем, но оставляем как есть
+
+    return normalized_filters

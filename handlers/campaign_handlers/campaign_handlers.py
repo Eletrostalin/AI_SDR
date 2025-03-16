@@ -173,7 +173,9 @@ async def process_filters(message: Message, state: FSMContext):
 
         # 🔹 Обновляем состояние с новыми фильтрами
         campaign_data["filters"] = filters
+        logger.info(f"📌 Перед обновлением state: {campaign_data}")
         await state.update_data(campaign_data=campaign_data)
+
         logger.info(f"🔹 Состояние обновлено: {campaign_data}")
 
         await message.reply("Рекламная кампания настроена. Перейдем к созданию контент-плана. Для этого ответьте на несколько вопросов")

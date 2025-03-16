@@ -48,7 +48,7 @@ CREATE TABLE campaigns (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     status VARCHAR DEFAULT 'active' NOT NULL,
     status_for_user BOOLEAN DEFAULT TRUE NOT NULL,
-    filters JSON,
+    filters JSONB,
     email_table_id INTEGER REFERENCES email_tables(email_table_id)
 );
 

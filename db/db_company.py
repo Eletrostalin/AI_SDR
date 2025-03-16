@@ -103,3 +103,14 @@ def delete_additional_info(db: Session, company_id: int):
         logger.error(f"Ошибка при удалении содержимого additional_info: {e}", exc_info=True)
         raise
 
+
+def get_available_google_sheet():
+    """
+    Возвращает первую доступную Google-таблицу и помечает её как использованную.
+    """
+    for sheet_url, available in GOOGLE_SHEETS_POOL.items():
+        if available:
+            GOOGLE_SHEETS_POOL[sheet_url] = False  # Блокируем использование этой ссылки
+            return sheet_url
+    return None  # Если все ссылки заняты
+

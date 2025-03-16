@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from db import db
 from db.models import Templates, ContentPlan, Waves, Company
 from logger import logger
+from promts.draft_promts import EMAIL_GENERATION_PROMPT, FORBIDDEN_WORDS
 from utils.google_doc import append_drafts_to_sheet
 from utils.utils import send_to_model
 
@@ -94,38 +95,23 @@ async def generate_draft_for_lead(template, lead_data, subject, wave_id, descrip
 
     logger.info(f"📝 Генерируем черновик для {company_name} (lead_id={lead_id})...")
 
-    # Формируем промпт для модели
-    prompt = f"""
-    Шаблон письма:
-    {template.template_content}
-
-    Данные компании:
-    - Название: {company_name}
-    - Регион: {region}
-    - Входит в реестр: {map_registry}
-    - Директор: {director_name} ({director_position})
-    - Контактный номер: {phone_number}
-    - Веб-сайт: {website}
-    - Основной вид деятельности: {primary_activity}
-    - Выручка: {revenue}
-    - Число сотрудников: {employee_count}
-    - Количество филиалов: {branch_count}
-
-    📢 Описание контентного плана:
-    {description}
-
-    🎯 Задача:
-    - Напиши персонализированное письмо для компании {company_name}.
-    
-    - Сделай письмо более естественным, добавь упоминание об их деятельности ({primary_activity}).
-    - Используй описание контентного плана, чтобы адаптировать текст под цель кампании.
-    - Перемешай абзацы, добавь уникальное вступление.
-    - Используй разные формулировки, чтобы письма не были однотипными.
-    - Генерируй уникальную тему письма и основной текст.
-    - В ответе верни JSON-объект формата:
-      {{"subject": "<сгенерированная тема>", "text": "<сгенерированный текст>"}}
-    Важное замечание!! Если в каких то переменных будет None не используй их в тексте письма.
-    """
+    # Формируем промпт с подставленными данными
+    prompt = EMAIL_GENERATION_PROMPT.format(
+        template_content=template.template_content,
+        company_name=company_name,
+        region=region,
+        map_registry=map_registry,
+        director_name=director_name,
+        director_position=director_position,
+        phone_number=phone_number,
+        website=website,
+        primary_activity=primary_activity,
+        revenue=revenue,
+        employee_count=employee_count,
+        branch_count=branch_count,
+        description=description,
+        forbidden_words=", ".join(FORBIDDEN_WORDS)
+    )
 
     # Попытки генерации черновика (3 раза)
     for attempt in range(3):
@@ -133,7 +119,8 @@ async def generate_draft_for_lead(template, lead_data, subject, wave_id, descrip
             response = send_to_model(prompt)
             if not response:
                 raise ValueError("Ответ от модели пуст")
-                # Парсим JSON, который вернула модель
+
+            # Парсим JSON, который вернула модель
             generated_data = json.loads(response)
 
             if "subject" not in generated_data or "text" not in generated_data:

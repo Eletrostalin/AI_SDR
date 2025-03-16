@@ -164,7 +164,7 @@ async def save_cleaned_data(df: pd.DataFrame, segment_table_name: str, message, 
     result = process_table_operations(df, file_name, chat_id, message, segment_table_name)
 
     if result:
-        await message.reply(f"✅ Данные из {file_name} успешно загружены! 📊 Итоговое количество записей: **{len(df)}**.")
+        await message.reply(f"✅ База email загружена. Доступно записей: {len(df)}.")
     else:
         await message.reply(f"❌ Ошибка при обработке данных из {file_name}.")
 
